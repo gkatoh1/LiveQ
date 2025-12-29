@@ -149,7 +149,7 @@ export default function EventAdmin() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const [event, setEvent] = useState(null)
-  const [notFound, setNotFound] = useState(false) 
+  const [notFound, setNotFound] = useState(false) // NEW STATE
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [passwordInput, setPasswordInput] = useState('')
   const [tab, setTab] = useState('polls')
@@ -158,7 +158,12 @@ export default function EventAdmin() {
 
   const fetchEvent = async () => {
     const { data, error } = await supabase.from('events').select('*').eq('slug', slug).single()
-    if (error || !data) { setNotFound(true); return }
+    
+    if (error || !data) {
+        setNotFound(true)
+        return
+    }
+
     if(data) {
         setEvent(data)
         const savedPass = sessionStorage.getItem(`admin_pass_${slug}`)
@@ -204,14 +209,15 @@ export default function EventAdmin() {
       alert("リセット完了");
   }
 
+  // --- ERROR SCREEN IF EVENT DELETED ---
   if (notFound) {
       return (
-          <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4">
-              <div className="text-center space-y-6">
+          <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6">
+              <div className="text-center space-y-6 animate-in zoom-in-95 duration-500">
                   <div className="text-6xl animate-bounce">😢</div>
                   <h1 className="text-3xl font-bold">Event Not Found</h1>
-                  <p className="text-zinc-500">このイベントは削除されたか、存在しません。</p>
-                  <Link to="/admin" className="inline-block bg-indigo-600 px-8 py-4 rounded-xl font-bold hover:bg-indigo-500 transition-colors shadow-lg">
+                  <p className="text-zinc-500">このイベントは存在しないか、削除されました。</p>
+                  <Link to="/admin" className="inline-block bg-zinc-800 px-8 py-4 rounded-xl font-bold hover:bg-zinc-700 transition-colors">
                       ダッシュボードに戻る
                   </Link>
               </div>
@@ -262,10 +268,17 @@ export default function EventAdmin() {
             </div>
         </div>
 
-        {/* CHANGED: GRID LAYOUT FOR TABS */}
-        <div className="grid grid-cols-3 gap-2 mb-6">
+        {/* --- CHANGED: NAVIGATION TABS GRID --- */}
+        <div className="grid grid-cols-3 md:flex gap-2 mb-6 -mx-2 px-2 md:mx-0 md:px-0">
             {[{id: 'polls', label: '📊 投票'}, {id: 'chat', label: '💬 チャット'}, {id: 'qs', label: '❓ 質問'}, {id: 'mod', label: '🚨 違反'}, {id: 'banned', label: '🚫 BAN'}, {id: 'settings', label: '⚙️ 設定'}].map(t => (
-                <button key={t.id} onClick={()=>setTab(t.id)} className={`w-full flex justify-center items-center py-3 rounded-lg font-bold text-xs sm:text-sm transition-colors ${tab===t.id?'bg-blue-600 text-white':'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}>
+                <button 
+                    key={t.id} 
+                    onClick={()=>setTab(t.id)} 
+                    className={`
+                        px-2 py-3 md:px-4 md:py-2.5 rounded-lg font-bold text-xs md:text-sm transition-colors flex items-center justify-center
+                        ${tab===t.id ? 'bg-blue-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}
+                    `}
+                >
                     {t.label}
                 </button>
             ))}
