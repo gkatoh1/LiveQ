@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { downloadStyledQr } from './utils/qrGenerator'
 
-// --- SHARED LOADER COMPONENT ---
+// --- 0. SHARED LOADER COMPONENT ---
 function ModernLoader() {
   return (
     <div className="bg-black h-[100dvh] w-full flex flex-col items-center justify-center relative overflow-hidden text-white">
@@ -12,316 +12,310 @@ function ModernLoader() {
         <div className="relative"><span className="block w-12 h-12 border-4 border-zinc-800 border-t-indigo-500 rounded-full animate-spin"></span></div>
         <div className="flex flex-col items-center">
             <img src="/logo.png" alt="LiveQ" className="h-12 w-auto object-contain mb-2" />
-            <p className="text-zinc-500 text-[10px] font-mono animate-pulse tracking-widest">読み込み中...</p>
+            <p className="text-zinc-500 text-[10px] font-mono animate-pulse tracking-widest">管理画面を読み込み中...</p>
         </div>
       </div>
     </div>
   )
 }
 
-export default function OrganizerDashboard() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  
-  const [session, setSession] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [myEvent, setMyEvent] = useState(null)
-  
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [isSignUp, setIsSignUp] = useState(() => {
-    const params = new URLSearchParams(location.search)
-    return params.get('mode') === 'signup'
-  })
-  const [authMsg, setAuthMsg] = useState('')
+// --- 1. SUB COMPONENTS ---
 
-  const [newName, setNewName] = useState('')
-  const [newSlug, setNewSlug] = useState('')
-  const [newPass, setNewPass] = useState('')
-  const [newDate, setNewDate] = useState('')
-
-  // --- AUTH CHECK LOGIC ---
+function ModerationPanel({ eventId }) {
+  const [alerts, setAlerts] = useState([])
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      if (session) {
-          fetchMyEvent(session.user.id)
-      } else {
-          setLoading(false)
-      }
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      if (session) {
-          fetchMyEvent(session.user.id) 
-      } else { 
-          setMyEvent(null)
-          setLoading(false) 
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search)
-    if (params.get('mode') === 'signup') setIsSignUp(true)
-    if (params.get('mode') === 'login') setIsSignUp(false)
-  }, [location.search])
-
-  const fetchMyEvent = async (userId) => {
-    if (!myEvent) setLoading(true) 
-    const { data } = await supabase.from('events').select('*').eq('owner_id', userId).maybeSingle()
-    setMyEvent(data)
-    setLoading(false)
-  }
-
-  const translateError = (msg) => {
-    if (msg.includes("Invalid login credentials")) return "メールアドレスまたはパスワードが間違っています。"
-    if (msg.includes("User already registered")) return "このメールアドレスは既に登録されています。"
-    if (msg.includes("Password should be at least")) return "パスワードは6文字以上にしてください。"
-    return "エラーが発生しました: " + msg
-  }
-
-  const handleAuth = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    setAuthMsg('')
-    
-    if (isSignUp) {
-      const { error } = await supabase.auth.signUp({ 
-        email, 
-        password,
-        options: { emailRedirectTo: `${window.location.origin}/admin` }
-      })
-      if (error) setAuthMsg(translateError(error.message))
-      else setAuthMsg("確認メールを送信しました！メール内のリンクをクリックしてください。")
-      setLoading(false)
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) {
-          setAuthMsg(translateError(error.message))
-          setLoading(false)
-      }
+    const fetchAlerts = async () => {
+      const { data } = await supabase.from('admin_notifications').select('*').eq('event_id', eventId).order('created_at', { ascending: false })
+      if (data) setAlerts(data)
     }
+    fetchAlerts()
+    const ch = supabase.channel('admin_mod_panel').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'admin_notifications', filter: `event_id=eq.${eventId}` }, (payload) => setAlerts(prev => [payload.new, ...prev])).subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [eventId])
+  const handleBan = async (userId, notificationId) => {
+    if (!confirm("本当にこのユーザーをBANしますか？")) return
+    await supabase.from('profiles').update({ is_banned: true }).eq('id', userId)
+    await supabase.from('admin_notifications').delete().eq('id', notificationId)
+    setAlerts(prev => prev.filter(a => a.id !== notificationId))
+    alert("ユーザーをBANしました")
   }
-
-  const createEvent = async (e) => {
-    e.preventDefault()
-    if (!newName || !newSlug || !newPass || !newDate) return alert("全ての項目を入力してください")
-    if (!/^[a-zA-Z0-9-_]+$/.test(newSlug)) return alert("URLスラッグは英数字とハイフンのみ使用できます")
-
-    const { error } = await supabase.from('events').insert({
-      owner_id: session.user.id,
-      name: newName,
-      slug: newSlug,
-      password: newPass,
-      event_date: newDate,
-      enable_chat: true,
-      enable_questions: true,
-      enable_welcome: true,
-      question_limit: 2, 
-      welcome_message: `Welcome to ${newName}!`
-    })
-
-    if (error) {
-      alert("作成エラー: " + translateError(error.message))
-    } else {
-      fetchMyEvent(session.user.id)
-    }
-  }
-
-  const deleteEvent = async () => {
-    if (!confirm("イベントを削除しますか？\n関連データは全て消去されます。")) return
-    const { error } = await supabase.from('events').delete().eq('id', myEvent.id)
-    if (error) alert(error.message)
-    else setMyEvent(null)
-  }
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    navigate('/admin')
-  }
-
-  const customStyles = `
-    input:-webkit-autofill,
-    input:-webkit-autofill:hover, 
-    input:-webkit-autofill:focus, 
-    input:-webkit-autofill:active {
-        -webkit-box-shadow: 0 0 0 30px black inset !important;
-        -webkit-text-fill-color: white !important;
-        transition: background-color 5000s ease-in-out 0s;
-    }
-    input[type="date"]::-webkit-datetime-edit-month-field:focus,
-    input[type="date"]::-webkit-datetime-edit-day-field:focus,
-    input[type="date"]::-webkit-datetime-edit-year-field:focus {
-        background: transparent !important;
-        color: white !important;
-        outline: none !important;
-    }
-    input[type="date"]:focus {
-        outline: none !important; 
-        border-color: #6366f1 !important;
-    }
-    input[type="date"]:invalid::-webkit-datetime-edit {
-        color: #71717a; /* zinc-500 */
-    }
-  `
-
-  if (loading) {
-      return <ModernLoader />
-  }
-
-  if (!session) {
-    return (
-      <div className="min-h-screen bg-[#0A051E] flex flex-col items-center justify-center p-6 text-white font-sans">
-        <style>{customStyles}</style>
-
-        <div className="w-full max-w-sm bg-zinc-900/80 p-8 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-xl">
-          
-          <div className="flex justify-center mb-8">
-             <img src="/logo.png" alt="LiveQ" className="h-12 w-auto object-contain" />
+  const handleDismiss = async (id) => { await supabase.from('admin_notifications').delete().eq('id', id); setAlerts(prev => prev.filter(a => a.id !== id)) }
+  return (
+    <div className="space-y-4 pb-20">
+      <h2 className="text-xl md:text-2xl font-bold mb-4 text-red-400 flex items-center gap-2">🚨 違反報告 <span className="text-sm font-normal text-zinc-500">(Realtime)</span></h2>
+      {alerts.length === 0 && <p className="text-zinc-500 bg-zinc-900 p-8 rounded-xl text-center">現在、報告はありません。</p>}
+      {alerts.map(alert => (
+        <div key={alert.id} className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-in slide-in-from-top-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1"><span className="font-bold text-red-300 truncate">{alert.nickname}</span><span className="text-xs text-red-500/70 font-mono">ID:{alert.user_id.slice(0,4)}</span></div>
+            <p className="text-white text-sm break-all">発言: <span className="bg-black/50 px-2 py-0.5 rounded text-yellow-400">{alert.content}</span></p>
+            <p className="text-[10px] text-zinc-500 mt-1">{new Date(alert.created_at).toLocaleString()}</p>
           </div>
-
-          <div className="flex bg-black p-1 rounded-xl mb-8 border border-zinc-700">
-             <button 
-                onClick={() => {setIsSignUp(true); setAuthMsg('')}}
-                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${isSignUp ? 'bg-indigo-600 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-             >
-                新規登録
-             </button>
-             <button 
-                onClick={() => {setIsSignUp(false); setAuthMsg('')}}
-                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${!isSignUp ? 'bg-indigo-600 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-             >
-                ログイン
-             </button>
-          </div>
-          
-          <form onSubmit={handleAuth} className="space-y-4">
-            <input 
-              type="email" required value={email} onChange={e=>setEmail(e.target.value)} 
-              placeholder="メールアドレス" 
-              className="w-full bg-black/50 border border-zinc-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 transition-colors placeholder-zinc-600"
-            />
-            <input 
-              type="password" required value={password} onChange={e=>setPassword(e.target.value)} 
-              placeholder="パスワード" 
-              className="w-full bg-black/50 border border-zinc-700 p-4 rounded-xl text-white outline-none focus:border-indigo-500 transition-colors placeholder-zinc-600"
-            />
-            <button disabled={loading} className="w-full bg-indigo-600 py-4 rounded-xl font-bold hover:bg-indigo-500 transition-all active:scale-95 shadow-lg shadow-indigo-500/20">
-              {loading ? '処理中...' : (isSignUp ? 'アカウント作成' : 'ログインする')}
-            </button>
-          </form>
-          
-          {authMsg && <p className="text-center text-sm text-yellow-400 mt-6 bg-yellow-900/20 p-3 rounded-lg border border-yellow-500/20">{authMsg}</p>}
+          <div className="flex gap-2 w-full md:w-auto"><button onClick={() => handleDismiss(alert.id)} className="flex-1 md:flex-none px-4 py-3 md:py-2 rounded border border-zinc-600 text-zinc-400 hover:bg-zinc-800 text-sm font-bold">無視</button><button onClick={() => handleBan(alert.user_id, alert.id)} className="flex-1 md:flex-none px-4 py-3 md:py-2 rounded bg-red-600 text-white font-bold hover:bg-red-500 shadow-lg text-sm">BAN実行</button></div>
         </div>
+      ))}
+    </div>
+  )
+}
+
+function ChatManager({ eventId }) {
+  const [msgs, setMsgs] = useState([])
+  useEffect(() => { loadMsgs(); const ch = supabase.channel('admin_chat_mgr').on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `event_id=eq.${eventId}` }, loadMsgs).subscribe(); return () => supabase.removeChannel(ch) }, [eventId])
+  const loadMsgs = async () => { const { data } = await supabase.from('messages').select('*').eq('event_id', eventId).order('created_at', { ascending: false }).limit(50); if(data) setMsgs(data) }
+  const deleteMsg = async (id) => { if(confirm("削除しますか？")) await supabase.from('messages').delete().eq('id', id) }
+  const clearAll = async () => { if(confirm("⚠️ 本当に全てのチャット履歴を削除しますか？")) await supabase.from('messages').delete().eq('event_id', eventId) }
+  return (
+    <div className="space-y-4 pb-20">
+      <div className="flex justify-between items-center mb-2"><h2 className="text-xl md:text-2xl font-bold text-blue-400">💬 チャット管理</h2><button onClick={clearAll} className="bg-red-900/30 text-red-300 border border-red-800 px-3 py-1 rounded text-xs hover:bg-red-900">履歴全消去</button></div>
+      <div className="bg-zinc-900 rounded-xl border border-zinc-800 h-[60vh] overflow-y-auto">
+        {msgs.map(m => (<div key={m.id} className="p-3 border-b border-zinc-800 flex justify-between items-start hover:bg-zinc-800/50"><div className="min-w-0 pr-2"><span className="text-xs text-zinc-500 font-bold block mb-0.5">{m.nickname}</span><span className="text-zinc-300 text-sm break-all">{m.content}</span></div><button onClick={() => deleteMsg(m.id)} className="text-zinc-500 hover:text-red-500 p-2">✕</button></div>))}
+        {msgs.length === 0 && <div className="p-8 text-zinc-600 text-center">メッセージはありません</div>}
       </div>
-    )
+    </div>
+  )
+}
+
+function QuestionManager({ eventId }) {
+  const [qs, setQs] = useState([])
+  useEffect(() => { loadQs(); const ch = supabase.channel('admin_qs_mgr').on('postgres_changes', { event: '*', schema: 'public', table: 'questions', filter: `event_id=eq.${eventId}` }, loadQs).subscribe(); return () => supabase.removeChannel(ch) }, [eventId])
+  const loadQs = async () => { const { data } = await supabase.from('questions').select('*').eq('event_id', eventId).order('created_at', { ascending: false }); if(data) setQs(data) }
+  const deleteQ = async (id) => { if(confirm("削除しますか？")) await supabase.from('questions').delete().eq('id', id) }
+  const clearAll = async () => { if(confirm("⚠️ 本当に全ての質問を削除しますか？")) await supabase.from('questions').delete().eq('event_id', eventId) }
+  return (
+    <div className="space-y-4 pb-20">
+      <div className="flex justify-between items-center mb-2"><h2 className="text-xl md:text-2xl font-bold text-green-400">❓ 質問管理</h2><button onClick={clearAll} className="bg-red-900/30 text-red-300 border border-red-800 px-3 py-1 rounded text-xs hover:bg-red-900">全消去</button></div>
+      <div className="bg-zinc-900 rounded-xl border border-zinc-800 h-[60vh] overflow-y-auto">
+        {qs.map(q => (<div key={q.id} className="p-3 border-b border-zinc-800 flex justify-between items-start hover:bg-zinc-800/50"><div className="min-w-0 pr-2"><div className="text-xs text-zinc-500 font-bold mb-1">{q.nickname} <span className="ml-2 bg-zinc-800 px-1.5 rounded">👍{q.likes}</span></div><div className="text-zinc-300 text-sm break-all">{q.content}</div></div><button onClick={() => deleteQ(q.id)} className="text-zinc-500 hover:text-red-500 p-2">✕</button></div>))}
+        {qs.length === 0 && <div className="p-8 text-zinc-600 text-center">質問はありません</div>}
+      </div>
+    </div>
+  )
+}
+
+function BannedUsersList({ eventId }) {
+  const [bannedUsers, setBannedUsers] = useState([])
+  const [manualName, setManualName] = useState('')
+  const [status, setStatus] = useState('')
+  const fetchBanned = async () => { const { data } = await supabase.from('profiles').select('*').eq('is_banned', true).eq('event_id', eventId); if (data) setBannedUsers(data) }
+  useEffect(() => { fetchBanned() }, [eventId])
+  const unbanUser = async (userId) => { if (!confirm("解除しますか？")) return; await supabase.from('profiles').update({ is_banned: false }).eq('id', userId); fetchBanned(); alert("解除しました") }
+  const executeManualBan = async () => {
+      if (!manualName.trim()) return
+      setStatus('検索中...')
+      const { data: targets } = await supabase.from('profiles').select('id, nickname').eq('event_id', eventId).ilike('nickname', manualName.trim())
+      if (!targets || targets.length === 0) { setStatus('❌ ユーザーが見つかりません'); return }
+      if (!confirm(`"${manualName}" に一致するユーザーが ${targets.length} 人見つかりました。全員BANしますか？`)) { setStatus(''); return }
+      const targetIds = targets.map(u => u.id)
+      await supabase.from('profiles').update({ is_banned: true }).in('id', targetIds)
+      setStatus(`✅ ${targets.length} 人をBANしました`); setManualName(''); fetchBanned()
+  }
+  return (
+    <div className="space-y-6 pb-20">
+      <div className="flex justify-between items-center"><h2 className="text-xl md:text-2xl font-bold text-zinc-400">🚫 BANリスト</h2><button onClick={fetchBanned} className="text-sm text-blue-400 underline">更新</button></div>
+      <div className="bg-red-900/10 border border-red-900/50 p-4 rounded-xl"><label className="text-xs font-bold text-red-400 uppercase tracking-widest mb-2 block">手動BAN (Manual Ban)</label><div className="flex gap-2"><input value={manualName} onChange={e => setManualName(e.target.value)} className="flex-1 bg-black border border-red-900/30 rounded-lg px-4 py-2 text-white placeholder-red-900/30 focus:outline-none focus:border-red-500" placeholder="ニックネームを入力..." /><button onClick={executeManualBan} className="bg-red-600 hover:bg-red-500 text-white font-bold px-4 py-2 rounded-lg transition-colors">BAN実行</button></div>{status && <p className="text-sm font-bold mt-2 text-red-300 animate-pulse">{status}</p>}</div>
+      <div className="space-y-2">
+          {bannedUsers.length === 0 && <p className="bg-zinc-900 p-8 rounded-xl text-center text-zinc-600">BAN中のユーザーはいません</p>}
+          {bannedUsers.map(user => (<div key={user.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-700 flex justify-between items-center"><div><p className="font-bold text-white">{user.nickname || '名無し'}</p><p className="text-[10px] text-zinc-500 font-mono">ID: {user.id}</p></div><button onClick={() => unbanUser(user.id)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm font-bold">解除</button></div>))}
+      </div>
+    </div>
+  )
+}
+
+function PollManager({ eventId, event, refreshEvent }) {
+  const [polls, setPolls] = useState([]); const [q, setQ] = useState(''); const [opts, setOpts] = useState(['','']);
+  useEffect(() => { loadPolls() }, []);
+  const loadPolls = () => { supabase.from('polls').select('*').eq('event_id', eventId).order('created_at', {ascending: false}).then(({data}) => setPolls(data||[])); }
+  const createPoll = async () => { if(!q || opts.some(o=>!o)) return; await supabase.from('polls').insert({ event_id: eventId, question: q, options: opts.map(l=>({label:l,count:0})) }); setQ(''); setOpts(['','']); loadPolls(); }
+  const deletePoll = async (pid) => { if(!confirm("削除しますか？")) return; await supabase.from('polls').delete().eq('id', pid); if(event.active_poll_id===pid){await supabase.from('events').update({active_poll_id:null}).eq('id',eventId);refreshEvent()} loadPolls(); }
+  const toggleEntry = async (pid) => { await supabase.from('events').update({ entry_poll_id: event.entry_poll_id===pid?null:pid }).eq('id', eventId); refreshEvent(); }
+  const toggleLive = async (pid) => { await supabase.from('events').update({ active_poll_id: event.active_poll_id===pid?null:pid }).eq('id', eventId); refreshEvent(); }
+  const handleOpt = (i, v) => { const n=[...opts]; n[i]=v; setOpts(n) }
+  return (
+    <div className="pb-20">
+      <h2 className="text-xl md:text-2xl font-bold mb-4">📊 投票管理</h2>
+      <div className="bg-zinc-900 p-4 rounded-xl mb-6 border border-zinc-800 shadow-md">
+        <h3 className="font-bold mb-3 text-sm text-zinc-400">新規作成</h3>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="質問文を入力" className="w-full bg-black p-3 rounded-lg mb-3 border border-zinc-700 text-white"/>
+        {opts.map((o,i)=>(<div key={i} className="flex gap-2 mb-2"><input value={o} onChange={e=>handleOpt(i,e.target.value)} placeholder={`選択肢 ${i+1}`} className="flex-1 bg-black p-3 rounded-lg border border-zinc-700 text-white"/>{opts.length>2 && <button onClick={()=>setOpts(opts.filter((_,x)=>x!==i))} className="text-zinc-500 px-3 text-xl">×</button>}</div>))}
+        <div className="flex gap-3 mt-4"><button onClick={()=>setOpts([...opts,''])} className="flex-1 bg-zinc-800 text-zinc-300 font-bold py-3 rounded-lg border border-zinc-700">+ 選択肢</button><button onClick={createPoll} className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg active:scale-95 transition-transform">作成する</button></div>
+      </div>
+      <div className="space-y-4">{polls.map(p=>(<div key={p.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex flex-col gap-4"><div><p className="font-bold text-lg">{p.question}</p><p className="text-xs text-zinc-500 mt-1">{p.options && p.options.map(o => o.label).join(' / ')}</p></div><div className="flex gap-2 w-full"><button onClick={()=>toggleEntry(p.id)} className={`flex-1 py-2 rounded-lg text-sm font-bold border ${event.entry_poll_id===p.id?'bg-yellow-500 border-yellow-500 text-black shadow-[0_0_10px_rgba(234,179,8,0.4)]':'bg-black border-zinc-700 text-zinc-400'}`}>{event.entry_poll_id===p.id ? '★ 参加時ON' : '参加時'}</button><button onClick={()=>toggleLive(p.id)} className={`flex-1 py-2 rounded-lg text-sm font-bold border ${event.active_poll_id===p.id?'bg-red-600 border-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.6)] animate-pulse':'bg-black border-zinc-700 text-zinc-400'}`}>{event.active_poll_id===p.id ? '● LIVE中' : 'LIVE'}</button><button onClick={()=>deletePoll(p.id)} className="w-10 flex items-center justify-center rounded-lg bg-zinc-800 text-red-500 border border-zinc-700">🗑️</button></div></div>))}</div>
+    </div>
+  )
+}
+
+// --- 2. MAIN ADMIN COMPONENT ---
+export default function EventAdmin() {
+  const { slug } = useParams()
+  const navigate = useNavigate()
+  const [event, setEvent] = useState(null)
+  const [notFound, setNotFound] = useState(false) 
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [passwordInput, setPasswordInput] = useState('')
+  const [tab, setTab] = useState('polls')
+
+  useEffect(() => { if(!slug) return; fetchEvent() }, [slug])
+
+  const fetchEvent = async () => {
+    const { data, error } = await supabase.from('events').select('*').eq('slug', slug).single()
+    if (error || !data) { setNotFound(true); return }
+    if(data) {
+        setEvent(data)
+        const savedPass = sessionStorage.getItem(`admin_pass_${slug}`)
+        if (savedPass && savedPass === data.password) { setIsAuthenticated(true) }
+    }
+  }
+
+  const handleLogin = (e) => { e.preventDefault(); if (event && passwordInput === event.password) { setIsAuthenticated(true); sessionStorage.setItem(`admin_pass_${slug}`, passwordInput) } else { alert("パスワードが違います") } }
+  const handleLogout = () => { setIsAuthenticated(false); sessionStorage.removeItem(`admin_pass_${slug}`) }
+
+  const toggleFeature = async (key) => {
+    await supabase.from('events').update({ [key]: !event[key] }).eq('id', event.id)
+    setEvent({...event, [key]: !event[key]})
+  }
+
+  const updateSettings = async (e) => {
+    e.preventDefault()
+    const password = e.target.password.value
+    const limit = parseInt(e.target.limit.value)
+    const welcome = e.target.welcome_message.value
+
+    if (isNaN(limit)) return alert("数字を入力してください")
+    
+    const { error } = await supabase.from('events').update({ password, question_limit: limit, welcome_message: welcome }).eq('id', event.id)
+    
+    if (error) alert("エラー: " + error.message)
+    else { 
+        alert("設定を保存しました")
+        sessionStorage.setItem(`admin_pass_${slug}`, password)
+        setEvent({...event, password, question_limit: limit, welcome_message: welcome})
+    }
+  }
+
+  const fullReset = async () => {
+      if(!confirm("【危険】本当に全てのデータを削除しますか？\n(チャット、質問、投票設定などが消えます)")) return;
+      const newCount = event.reset_count + 1
+      await supabase.from('events').update({ reset_count: newCount, active_poll_id: null }).eq('id', event.id);
+      await supabase.from('messages').delete().eq('event_id', event.id);
+      await supabase.from('questions').delete().eq('event_id', event.id);
+      await supabase.from('admin_notifications').delete().eq('event_id', event.id);
+      await supabase.from('profiles').delete().eq('event_id', event.id);
+      setEvent({ ...event, reset_count: newCount, active_poll_id: null })
+      alert("リセット完了");
+  }
+
+  if (notFound) {
+      return (
+          <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4">
+              <div className="text-center space-y-6">
+                  <div className="text-6xl animate-bounce">😢</div>
+                  <h1 className="text-3xl font-bold">Event Not Found</h1>
+                  <p className="text-zinc-500">このイベントは削除されたか、存在しません。</p>
+                  <Link to="/admin" className="inline-block bg-indigo-600 px-8 py-4 rounded-xl font-bold hover:bg-indigo-500 transition-colors shadow-lg">
+                      ダッシュボードに戻る
+                  </Link>
+              </div>
+          </div>
+      )
+  }
+
+  if (!event) return <ModernLoader />
+
+  if (!isAuthenticated) {
+      return (
+          <div className="h-[100dvh] bg-black text-white flex flex-col items-center justify-center p-6">
+              <div className="w-full max-w-sm bg-zinc-900 p-8 rounded-2xl border border-zinc-800 shadow-2xl">
+                  <img src="/logo.png" alt="LiveQ" className="h-12 w-auto object-contain mx-auto mb-4" />
+                  <h1 className="text-2xl font-bold mb-2 text-center text-zinc-100">{event.name}</h1>
+                  <p className="text-zinc-500 text-center mb-8 text-sm">管理者ログイン</p>
+                  <form onSubmit={handleLogin} className="space-y-4">
+                      <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} placeholder="パスワード" className="w-full bg-black border border-zinc-700 p-4 rounded-xl text-white outline-none focus:border-blue-500 transition-colors" />
+                      <button className="w-full bg-blue-600 py-4 rounded-xl font-bold text-lg hover:bg-blue-500 active:scale-95 transition-all">ログイン</button>
+                  </form>
+              </div>
+          </div>
+      )
   }
 
   return (
-    <div className="min-h-screen bg-black text-white font-sans p-6 md:p-12">
-      <div className="max-w-4xl mx-auto">
-        <style>{customStyles}</style>
-
-        <div className="flex justify-between items-center mb-12 border-b border-zinc-800 pb-6">
-          <div className="flex items-center gap-4">
-             <img src="/logo.png" alt="LiveQ" className="h-8 w-auto opacity-80" />
-             <h1 className="text-2xl font-bold hidden md:block">Organizer Dashboard</h1>
-          </div>
-          <button onClick={handleLogout} className="text-zinc-500 hover:text-white text-sm bg-zinc-900 px-4 py-2 rounded-lg border border-zinc-800">ログアウト</button>
+    <div className="min-h-screen bg-black text-white font-sans">
+      <div className="max-w-4xl mx-auto p-4 md:p-8">
+        
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-zinc-800 pb-6">
+            <div className="w-full md:w-auto">
+                <div className="flex items-center gap-2 mb-1">
+                    <img src="/logo.png" alt="LiveQ" className="h-6 w-auto object-contain" />
+                    <span className="text-blue-500 text-base md:text-lg font-bold">/ Admin</span>
+                </div>
+                <p className="text-zinc-500 text-xs">{event.name}</p>
+                <div className="flex flex-wrap gap-4 text-sm mt-2">
+                    <Link to={`/projector/${event.slug}`} target="_blank" className="text-blue-400 hover:text-blue-300">📽️ プロジェクター</Link>
+                    <Link to={`/${event.slug}`} target="_blank" className="text-blue-400 hover:text-blue-300">📱 参加者ビュー</Link>
+                    <button onClick={() => downloadStyledQr(event.slug, event.name)} className="text-green-400 hover:text-green-300 flex items-center gap-1">⬇️ QR保存</button>
+                    <button onClick={handleLogout} className="text-zinc-500 hover:text-white">ログアウト</button>
+                </div>
+            </div>
+            <div className="w-full md:w-auto">
+                <button onClick={fullReset} className="w-full md:w-auto bg-red-900/40 text-red-400 border border-red-800 px-4 py-3 md:py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap hover:bg-red-900/60 transition-colors">
+                    ⚠ 完全リセット
+                </button>
+            </div>
         </div>
 
-        {myEvent && (
-          <div className="bg-gradient-to-br from-zinc-900 to-black border border-zinc-800 p-8 rounded-3xl relative overflow-hidden group animate-in zoom-in-95 duration-300">
-             
-             <div className="relative z-10">
-                <span className="inline-block bg-green-500/20 text-green-400 text-xs font-bold px-3 py-1 rounded-full mb-4 border border-green-500/30">Active Event</span>
-                <h2 className="text-4xl font-black mb-2">{myEvent.name}</h2>
-                <p className="text-zinc-500 font-mono mb-8 text-lg">liveq.netlify.app/{myEvent.slug}</p>
-
-                <div className="grid grid-cols-2 md:flex md:flex-wrap gap-4">
-                   
-                   {/* 1. Admin */}
-                   <Link to={`/admin/${myEvent.slug}`} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-4 rounded-xl font-bold shadow-lg shadow-indigo-900/20 transition-all text-sm md:text-lg active:scale-95 flex items-center justify-center">
-                      管理画面
-                   </Link>
-                   
-                   {/* 2. User View */}
-                   <Link to={`/${myEvent.slug}`} target="_blank" className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-4 rounded-xl font-bold border border-zinc-700 transition-all text-sm md:text-lg active:scale-95 flex items-center justify-center">
-                      📱 参加者
-                   </Link>
-                   
-                   {/* 3. Projector (FIXED WRAPPING) */}
-                   <Link to={`/projector/${myEvent.slug}`} target="_blank" className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-4 rounded-xl font-bold border border-zinc-700 transition-all text-xs md:text-lg active:scale-95 flex items-center justify-center whitespace-nowrap">
-                      📽️ プロジェクター
-                   </Link>
-                   
-                   {/* 4. QR Save */}
-                   <button 
-                      onClick={() => downloadStyledQr(myEvent.slug, myEvent.name)} 
-                      className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-4 rounded-xl font-bold border border-zinc-700 transition-all text-sm md:text-lg active:scale-95 flex items-center justify-center"
-                   >
-                      ⬇️ QR保存
-                   </button>
-                </div>
-
-                <div className="mt-12 pt-8 border-t border-zinc-800 flex flex-col md:flex-row justify-between items-center md:items-end gap-6">
-                   <div className="text-zinc-600 text-xs text-center md:text-left w-full md:w-auto">
-                      開催日: {myEvent.event_date}<br/>
-                      ※ データ整理のため、開催日の3日後に自動削除されます
-                   </div>
-                   <button onClick={deleteEvent} className="text-red-500 hover:text-red-400 text-sm font-bold underline bg-red-900/10 px-6 py-3 rounded-xl hover:bg-red-900/20 transition-colors w-full md:w-auto text-center">
-                      イベントを削除して新しく作成
-                   </button>
-                </div>
-             </div>
-          </div>
-        )}
-
-        {!myEvent && (
-          <div className="max-w-xl mx-auto bg-zinc-900/50 p-8 rounded-3xl border border-zinc-800 animate-in slide-in-from-bottom-4">
-             <h2 className="text-2xl font-bold mb-6 text-center">新規イベント作成</h2>
-             <form onSubmit={createEvent} className="space-y-6">
-                <div>
-                   <label className="block text-xs font-bold text-zinc-500 mb-2 uppercase">イベント名</label>
-                   <input value={newName} onChange={e=>setNewName(e.target.value)} className="w-full bg-black p-4 rounded-xl border border-zinc-700 focus:border-indigo-500 outline-none transition-colors" placeholder="例: 定例ミーティング" />
-                </div>
-                <div>
-                   <label className="block text-xs font-bold text-zinc-500 mb-2 uppercase">URLスラッグ (英数字)</label>
-                   <div className="flex items-center bg-black rounded-xl border border-zinc-700 overflow-hidden focus-within:border-indigo-500 transition-colors">
-                      <span className="pl-4 text-zinc-500 text-sm">liveq.netlify.app/</span>
-                      <input value={newSlug} onChange={e=>setNewSlug(e.target.value)} className="flex-1 bg-transparent p-4 outline-none" placeholder="meeting-01" />
-                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div>
-                      <label className="block text-xs font-bold text-zinc-500 mb-2 uppercase">開催日</label>
-                      <input 
-                        type="date" 
-                        required 
-                        value={newDate} 
-                        onChange={e=>setNewDate(e.target.value)}
-                        onClick={(e) => e.target.showPicker && e.target.showPicker()}
-                        onKeyDown={(e) => e.preventDefault()}
-                        className="w-full bg-black p-4 rounded-xl border border-zinc-700 focus:border-indigo-500 outline-none text-white [color-scheme:dark] transition-colors cursor-pointer caret-transparent appearance-none min-h-[58px]" 
-                      />
-                   </div>
-                   <div>
-                      <label className="block text-xs font-bold text-zinc-500 mb-2 uppercase">管理者パスワード</label>
-                      <input value={newPass} onChange={e=>setNewPass(e.target.value)} className="w-full bg-black p-4 rounded-xl border border-zinc-700 focus:border-indigo-500 outline-none transition-colors" placeholder="パスワード" />
-                   </div>
-                </div>
-                <button className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 py-4 rounded-xl font-bold text-lg hover:scale-[1.02] transition-transform shadow-xl shadow-indigo-900/30 text-white active:scale-95">
-                   イベントを作成
+        {/* CHANGED: GRID LAYOUT FOR TABS */}
+        <div className="grid grid-cols-3 gap-2 mb-6">
+            {[{id: 'polls', label: '📊 投票'}, {id: 'chat', label: '💬 チャット'}, {id: 'qs', label: '❓ 質問'}, {id: 'mod', label: '🚨 違反'}, {id: 'banned', label: '🚫 BAN'}, {id: 'settings', label: '⚙️ 設定'}].map(t => (
+                <button key={t.id} onClick={()=>setTab(t.id)} className={`w-full flex justify-center items-center py-3 rounded-lg font-bold text-xs sm:text-sm transition-colors ${tab===t.id?'bg-blue-600 text-white':'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}>
+                    {t.label}
                 </button>
-                <p className="text-center text-xs text-zinc-600">※ フリープランは1人1イベントまで作成可能です。</p>
-             </form>
-          </div>
-        )}
+            ))}
+        </div>
 
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            {tab === 'polls' && <PollManager eventId={event.id} event={event} refreshEvent={() => fetchEvent(false)} />}
+            {tab === 'chat' && <ChatManager eventId={event.id} />}
+            {tab === 'qs' && <QuestionManager eventId={event.id} />}
+            {tab === 'mod' && <ModerationPanel eventId={event.id} />}
+            {tab === 'banned' && <BannedUsersList eventId={event.id} />}
+
+            {tab === 'settings' && (
+                <div className="space-y-6 pb-20">
+                    <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800 shadow-lg">
+                        <h3 className="font-bold mb-4 text-zinc-300">機能のON/OFF</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <button onClick={()=>toggleFeature('enable_chat')} className={`p-4 rounded-xl border font-bold flex justify-between items-center transition-all ${event.enable_chat?'bg-green-900/20 border-green-500/50 text-green-400':'bg-black border-zinc-700 text-zinc-500'}`}>
+                                <span>💬 チャット機能</span><span className={`text-xs px-2 py-1 rounded ${event.enable_chat?'bg-green-500 text-black':'bg-zinc-800 text-zinc-500'}`}>{event.enable_chat?'ON':'OFF'}</span>
+                            </button>
+                            <button onClick={()=>toggleFeature('enable_questions')} className={`p-4 rounded-xl border font-bold flex justify-between items-center transition-all ${event.enable_questions?'bg-green-900/20 border-green-500/50 text-green-400':'bg-black border-zinc-700 text-zinc-500'}`}>
+                                <span>❓ 質問機能</span><span className={`text-xs px-2 py-1 rounded ${event.enable_questions?'bg-green-500 text-black':'bg-zinc-800 text-zinc-500'}`}>{event.enable_questions?'ON':'OFF'}</span>
+                            </button>
+                            
+                            <button onClick={()=>toggleFeature('enable_welcome')} className={`p-4 rounded-xl border font-bold flex justify-between items-center transition-all ${event.enable_welcome?'bg-yellow-900/20 border-yellow-500/50 text-yellow-400':'bg-black border-zinc-700 text-zinc-500'}`}>
+                                <span>👋 ウェルカム画面</span><span className={`text-xs px-2 py-1 rounded ${event.enable_welcome?'bg-yellow-500 text-black':'bg-zinc-800 text-zinc-500'}`}>{event.enable_welcome?'ON':'OFF'}</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <form onSubmit={updateSettings} className="bg-zinc-900 p-6 rounded-xl border border-zinc-800 shadow-lg space-y-6">
+                        <h3 className="font-bold text-zinc-300">基本設定</h3>
+                        <div>
+                            <label className="block text-zinc-500 text-xs font-bold mb-2 uppercase tracking-wider">ウェルカムメッセージ</label>
+                            <textarea name="welcome_message" defaultValue={event.welcome_message} className="w-full bg-black p-4 rounded-xl border border-zinc-700 text-white focus:border-blue-500 outline-none transition-colors h-24" placeholder="参加者に表示するメッセージを入力..." />
+                        </div>
+                        <div>
+                            <label className="block text-zinc-500 text-xs font-bold mb-2 uppercase tracking-wider">管理者パスワード</label>
+                            <input name="password" defaultValue={event.password} className="w-full bg-black p-4 rounded-xl border border-zinc-700 text-white focus:border-blue-500 outline-none transition-colors" />
+                            <p className="text-zinc-600 text-xs mt-2">※ 変更すると、他の管理者は自動的にログアウトされます。</p>
+                        </div>
+                        <div>
+                            <label className="block text-zinc-500 text-xs font-bold mb-2 uppercase tracking-wider">質問リミット (1人あたり)</label>
+                            <input name="limit" type="number" defaultValue={event.question_limit} className="w-full bg-black p-4 rounded-xl border border-zinc-700 text-white focus:border-blue-500 outline-none transition-colors" />
+                        </div>
+                        <button className="w-full bg-blue-600 py-4 rounded-xl font-bold text-white hover:bg-blue-500 active:scale-95 transition-all shadow-lg">設定を保存</button>
+                    </form>
+                </div>
+            )}
+        </div>
       </div>
     </div>
   )
