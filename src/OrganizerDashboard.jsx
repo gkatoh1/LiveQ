@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
-import { Link, useNavigate, useLocation } from 'react-router-dom' // Added useLocation
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { downloadStyledQr } from './utils/qrGenerator'
 
 // --- SHARED LOADER COMPONENT ---
@@ -21,25 +21,20 @@ function ModernLoader() {
 
 export default function OrganizerDashboard() {
   const navigate = useNavigate()
-  const location = useLocation() // Get URL params
+  const location = useLocation()
   
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [myEvent, setMyEvent] = useState(null)
   
-  // Auth State
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  
-  // LOGIC: Check if ?mode=signup is in the URL. If so, default to true. Else false (login).
   const [isSignUp, setIsSignUp] = useState(() => {
     const params = new URLSearchParams(location.search)
     return params.get('mode') === 'signup'
   })
-  
   const [authMsg, setAuthMsg] = useState('')
 
-  // Create Event State
   const [newName, setNewName] = useState('')
   const [newSlug, setNewSlug] = useState('')
   const [newPass, setNewPass] = useState('')
@@ -61,7 +56,6 @@ export default function OrganizerDashboard() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Listen for URL changes if user clicks back/forward or navigates from landing page
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     if (params.get('mode') === 'signup') setIsSignUp(true)
@@ -162,6 +156,10 @@ export default function OrganizerDashboard() {
         outline: none !important; 
         border-color: #6366f1 !important;
     }
+    /* Placeholder trick for date inputs */
+    input[type="date"]:invalid::-webkit-datetime-edit {
+        color: #71717a; /* zinc-500 */
+    }
   `
 
   if (loading) {
@@ -224,7 +222,7 @@ export default function OrganizerDashboard() {
         <div className="flex justify-between items-center mb-12 border-b border-zinc-800 pb-6">
           <div className="flex items-center gap-4">
              <img src="/logo.png" alt="LiveQ" className="h-8 w-auto opacity-80" />
-             <h1 className="text-2xl font-bold hidden md:block">ダッシュボード</h1>
+             <h1 className="text-2xl font-bold hidden md:block">Organizer Dashboard</h1>
           </div>
           <button onClick={handleLogout} className="text-zinc-500 hover:text-white text-sm bg-zinc-900 px-4 py-2 rounded-lg border border-zinc-800">ログアウト</button>
         </div>
@@ -289,11 +287,13 @@ export default function OrganizerDashboard() {
                       <input value={newSlug} onChange={e=>setNewSlug(e.target.value)} className="flex-1 bg-transparent p-4 outline-none" placeholder="meeting-01" />
                    </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                {/* CHANGED: grid-cols-1 for mobile, md:grid-cols-2 for desktop */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                    <div>
                       <label className="block text-xs font-bold text-zinc-500 mb-2 uppercase">開催日</label>
                       <input 
                         type="date" 
+                        required // Required for pseudo-class styling
                         value={newDate} 
                         onChange={e=>setNewDate(e.target.value)}
                         onClick={(e) => e.target.showPicker && e.target.showPicker()}
