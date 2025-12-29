@@ -263,7 +263,7 @@ export default function OrganizerDashboard() {
                    </Link>
                    
                    {/* 3. Projector (Bottom Left) */}
-                   <Link to={`/projector/${myEvent.slug}`} target="_blank" className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-4 rounded-xl font-bold border border-zinc-700 transition-all text-sm md:text-lg active:scale-95 flex items-center justify-center">
+                   <Link to={`/projector/${myEvent.slug}`} target="_blank" className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-4 rounded-xl font-bold border border-zinc-700 transition-all text-xs md:text-lg active:scale-95 flex items-center justify-center">
                       📽️ プロジェクター
                    </Link>
                    
