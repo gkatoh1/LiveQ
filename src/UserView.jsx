@@ -1,43 +1,53 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
-import { useParams, useLocation } from 'react-router-dom'
+import { useParams, useLocation, Link } from 'react-router-dom'
 
-// --- CONFIG: BAD WORDS (English + Romaji) ---
-const BAD_WORDS_EXACT = [
-  "fuck", "shit", "asshole", "bitch", "dumb", "stupid", "idiot", "sex", "porn", "dick", "pussy",
-  "shine", "oppai", "baka", "ahou", "kuso", "hentai", "shi-ne", "kill", "die", "sex"
-]
+// --- CONFIG: BAD WORDS ---
+const BAD_WORDS_EXACT = ["fuck", "shit", "asshole", "bitch", "dumb", "stupid", "idiot", "sex", "porn", "dick", "pussy", "shine", "oppai", "baka", "ahou", "kuso", "hentai", "shi-ne", "kill", "die", "sex"]
 const BAD_WORDS_PARTIAL = ["馬鹿", "バカ", "死ね", "殺す", "キモい", "ウザい", "詐欺", "暴力"]
 
 const checkProfanity = (text) => {
   if (!text) return false
   const lowerText = text.toLowerCase()
-  // Check Japanese characters
   if (BAD_WORDS_PARTIAL.some(w => lowerText.includes(w))) return true
-  // Check English/Romaji tokens
   const tokens = lowerText.split(/[^a-z0-9]+/)
   return tokens.some(token => BAD_WORDS_EXACT.includes(token))
 }
 
-// --- LOADING SCREEN (LiveQ Branding) ---
+// --- COMPONENTS ---
+
 function ModernLoader() {
   return (
     <div className="bg-black h-[100dvh] w-full flex flex-col items-center justify-center relative overflow-hidden text-white">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-900/40 blur-[120px] rounded-full pointer-events-none"></div>
       <div className="relative z-10 flex flex-col items-center space-y-6">
-        <div className="relative">
-             <span className="block w-12 h-12 border-4 border-zinc-800 border-t-indigo-500 rounded-full animate-spin"></span>
-        </div>
+        <div className="relative"><span className="block w-12 h-12 border-4 border-zinc-800 border-t-indigo-500 rounded-full animate-spin"></span></div>
         <div className="flex flex-col items-center">
-            <h2 className="text-2xl font-black tracking-tighter">LiveQ</h2>
-            <p className="text-zinc-500 text-[10px] font-mono mt-2 animate-pulse tracking-widest">イベントに接続中...</p>
+            <img src="/logo.png" alt="LiveQ" className="h-12 w-auto object-contain mb-2" />
+            <p className="text-zinc-500 text-[10px] font-mono animate-pulse tracking-widest">イベントに接続中...</p>
         </div>
       </div>
     </div>
   )
 }
 
-// --- SUB COMPONENTS ---
+function WelcomeOverlay({ message, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-500">
+       <div className="w-full max-w-sm bg-zinc-900 border border-white/10 p-8 rounded-3xl shadow-2xl text-center relative animate-in zoom-in-95 duration-300">
+          <div className="mb-6 flex justify-center">
+             <img src="/logo.png" alt="LiveQ" className="h-10 w-auto object-contain" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-8 whitespace-pre-wrap leading-relaxed">
+            {message || "Welcome to the event!"}
+          </h2>
+          <button onClick={onClose} className="w-full bg-indigo-600 text-white p-4 rounded-2xl font-bold text-lg active:scale-95 transition-all shadow-lg shadow-indigo-900/20">
+            スタート
+          </button>
+       </div>
+    </div>
+  )
+}
 
 function ChatTab({ session, eventId, isBanned, isMock }) {
   const [msgs, setMsgs] = useState([])
@@ -46,16 +56,12 @@ function ChatTab({ session, eventId, isBanned, isMock }) {
 
   useEffect(() => {
     if (isMock) { setMsgs([{ id: 1, nickname: 'System', content: 'デモチャットを開始しました' }]); return }
-
     supabase.from('messages').select('*').eq('event_id', eventId).order('created_at', {ascending:true})
       .then(({data}) => { if(data) setMsgs(data); setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "auto" }), 100) })
-    
     const channelName = `chat_${eventId}_${Date.now()}`
     const ch = supabase.channel(channelName).on('postgres_changes', {event:'INSERT', schema:'public', table:'messages', filter:`event_id=eq.${eventId}`}, p => {
-        setMsgs(c => [...c, p.new])
-        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100)
+        setMsgs(c => [...c, p.new]); setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100)
     }).subscribe()
-
     return () => supabase.removeChannel(ch)
   }, [eventId, isMock])
 
@@ -95,7 +101,6 @@ function ChatTab({ session, eventId, isBanned, isMock }) {
 function QuestionsListTab({ session, eventId, isBanned, isMock }) {
   const [qs, setQs] = useState([])
   const [filter, setFilter] = useState('newest') 
-
   useEffect(() => {
     if (isMock) { setQs([{ id: 1, nickname: 'Demo', content: 'デモ質問です', likes: 10, dislikes: 0 }]); return }
     const fetchQs = async () => { const { data } = await supabase.from('questions').select('*').eq('event_id', eventId).eq('is_hidden', false); if (data) setQs(data) }
@@ -114,12 +119,10 @@ function QuestionsListTab({ session, eventId, isBanned, isMock }) {
     if (type === 'dislike' && (q.dislikes + 1) >= (q.likes + 2)) hide = true
     await supabase.from('questions').update({ ...update, is_hidden: hide }).eq('id', q.id)
   }
-
   const sortedQs = [...qs].sort((a,b) => {
     if (filter === 'newest') return new Date(b.created_at || 0) - new Date(a.created_at || 0)
     return (b.likes - b.dislikes) - (a.likes - a.dislikes)
   })
-
   return (
     <div className="flex flex-col h-full bg-black text-white p-4 overflow-hidden">
       <div className="flex gap-2 mb-4 bg-zinc-900 p-1 rounded-lg shrink-0 border border-zinc-800">
@@ -146,7 +149,6 @@ function SubmitQuestionTab({ session, eventId, limit, isBanned, isMock }) {
   const [txt, setTxt] = useState('')
   const [loading, setLoading] = useState(false)
   const [count, setCount] = useState(0)
-
   useEffect(() => {
     if (isMock) return
     const checkCount = async () => {
@@ -156,11 +158,9 @@ function SubmitQuestionTab({ session, eventId, limit, isBanned, isMock }) {
     checkCount()
   }, [])
   const hasRemaining = (limit - count) > 0
-
   const submit = async () => {
     if (!txt.trim() || isBanned || loading || !hasRemaining) return
     if (isMock) { setTxt(''); alert("Mock送信完了"); return }
-
     setLoading(true)
     if (checkProfanity(txt)) {
       const { data: user } = await supabase.from('profiles').select('nickname').eq('id', session.user.id).single()
@@ -172,7 +172,6 @@ function SubmitQuestionTab({ session, eventId, limit, isBanned, isMock }) {
     setLoading(false)
     if (!error) { setTxt(''); setCount(c => c + 1); alert("送信しました") }
   }
-
   return (
     <div className="h-full bg-black text-white p-6 flex flex-col justify-center max-w-md mx-auto overflow-y-auto">
       <h2 className="text-2xl font-bold mb-2">質問を投稿する</h2>
@@ -188,9 +187,7 @@ function MiniPollResults({ poll, isMock }) {
   useEffect(() => {
     if(isMock) return
     setLivePoll(poll)
-    const ch = supabase.channel(`mini_poll_${poll.id}_${Date.now()}`)
-      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'polls', filter:`id=eq.${poll.id}`}, (payload) => setLivePoll(payload.new))
-      .subscribe()
+    const ch = supabase.channel(`mini_poll_${poll.id}_${Date.now()}`).on('postgres_changes', {event:'UPDATE', schema:'public', table:'polls', filter:`id=eq.${poll.id}`}, (payload) => setLivePoll(payload.new)).subscribe()
     return () => supabase.removeChannel(ch)
   }, [poll.id, isMock])
   const total = livePoll.options.reduce((acc, opt) => acc + (opt.count || 0), 0) || 1
@@ -239,6 +236,8 @@ export default function UserView() {
   const [votedPolls, setVotedPolls] = useState(new Set())
   const [showThanks, setShowThanks] = useState(false)
   const [isBanned, setIsBanned] = useState(false)
+  
+  const [showWelcome, setShowWelcome] = useState(false)
 
   const activePollRef = useRef(null)
   const resetCountRef = useRef(0)
@@ -249,9 +248,10 @@ export default function UserView() {
   useEffect(() => {
     if (isMock) {
         setSession({ user: { id: 'mock-user' } })
-        setEvent({ id: 999, name: "LiveQ Demo", enable_chat: true, enable_questions: true, question_limit: 5 })
+        setEvent({ id: 999, name: "LiveQ Demo", enable_chat: true, enable_questions: true, question_limit: 5, enable_welcome: true, welcome_message: "Demo Welcome Message!" })
         setView('app')
         setTab('chat')
+        setShowWelcome(true)
     }
   }, [isMock])
 
@@ -273,15 +273,41 @@ export default function UserView() {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
   }, [isMock])
 
+  // --- 1. INITIAL CHECK (FIXED) ---
+  useEffect(() => {
+    if (isMock) return;
+    const init = async () => {
+        // STEP 1: Verify event exists BEFORE checking auth
+        const { data: ev, error } = await supabase.from('events').select('*').eq('slug', slug).maybeSingle()
+        
+        if (error || !ev) {
+            setView('error') // Event doesn't exist
+            return
+        }
+
+        setEvent(ev)
+
+        // STEP 2: Only proceed if event exists
+        const { data: auth } = await supabase.auth.getSession()
+        setSession(auth.session)
+        
+        if (!auth.session) {
+            setView('join')
+        } else {
+            loadEvent(auth.session.user.id)
+        }
+    }
+    init()
+  }, [slug, isMock])
+
   // --- LOAD DATA ---
   async function loadEvent(userId) {
     await supabase.removeAllChannels()
-
-    const { data, error } = await supabase.from('events').select('*').eq('slug', slug).single()
-    if (error || !data) return setView('error')
+    // We already know event exists from init, but good to keep fetching fresh data
+    const { data } = await supabase.from('events').select('*').eq('slug', slug).single()
+    if (!data) return setView('error') // Safety fallback
     
     resetCountRef.current = data.reset_count
-
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single()
     if (!profile) { await supabase.auth.signOut(); setView('join'); return }
     if (profile.is_banned) setIsBanned(true)
@@ -302,9 +328,7 @@ export default function UserView() {
           }
         }
       )
-      .subscribe((status) => {
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') window.location.reload()
-      })
+      .subscribe((status) => { if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') window.location.reload() })
 
     const profileChannel = supabase.channel(`profile_${Date.now()}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, 
@@ -320,28 +344,8 @@ export default function UserView() {
     if (data.active_poll_id) fetchPoll(data.active_poll_id)
     else if (data.entry_poll_id) fetchPoll(data.entry_poll_id)
 
-    return () => {
-      supabase.removeChannel(eventChannel)
-      supabase.removeChannel(profileChannel)
-    }
+    return () => { supabase.removeChannel(eventChannel); supabase.removeChannel(profileChannel) }
   }
-
-  // --- INITIAL CHECK ---
-  useEffect(() => {
-    if (isMock) return;
-
-    // Fetch event FIRST so join() works
-    const init = async () => {
-        const { data: ev } = await supabase.from('events').select('*').eq('slug', slug).single()
-        if (ev) setEvent(ev)
-
-        const { data: auth } = await supabase.auth.getSession()
-        setSession(auth.session)
-        if (!auth.session) setView('join')
-        else loadEvent(auth.session.user.id)
-    }
-    init()
-  }, [slug, isMock])
 
   const fetchPoll = async (id) => {
     const { data } = await supabase.from('polls').select('*').eq('id', id).single()
@@ -350,48 +354,28 @@ export default function UserView() {
 
   const handleKick = async () => { await supabase.auth.signOut(); setSession(null); setView('join'); alert("再ログインしてください") }
 
-  // --- JOIN (ENGLISH ONLY + UNIQUE + PROFANITY) ---
+  // --- JOIN ---
   const join = async (e) => {
     e.preventDefault(); 
     const nick = e.target.nick.value.trim(); 
     if (!nick) return
+    if (!/^[a-zA-Z0-9\s\-_.]+$/.test(nick)) { alert("ニックネームは英数字のみ使用可能です"); return }
+    if (checkProfanity(nick)) { alert("そのニックネームは使用できません"); return }
 
-    // 1. English Only Check (Allow letters, numbers, spaces, dots, underscores, hyphens)
-    if (!/^[a-zA-Z0-9\s\-_.]+$/.test(nick)) {
-        alert("ニックネームは英数字のみ使用可能です")
-        return
-    }
-
-    // 2. Bad Word Check
-    if (checkProfanity(nick)) {
-        alert("そのニックネームは使用できません")
-        return
-    }
-
-    // 3. Unique Check
-    const { data: existing } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('nickname', nick)
-        .eq('event_id', event.id) 
-        .limit(1)
-
-    if (existing && existing.length > 0) {
-        alert("そのニックネームは、このイベントですでに使用されています")
-        return
-    }
+    const { data: existing } = await supabase.from('profiles').select('id').eq('nickname', nick).eq('event_id', event.id).limit(1)
+    if (existing && existing.length > 0) { alert("そのニックネームは、このイベントですでに使用されています"); return }
 
     const { data, error } = await supabase.auth.signInAnonymously()
     if (error) return alert("接続エラー")
     
-    await supabase.from('profiles').upsert({ 
-        id: data.user.id, 
-        nickname: nick, 
-        event_id: event.id 
-    })
-
+    await supabase.from('profiles').upsert({ id: data.user.id, nickname: nick, event_id: event.id })
     setSession(data.session)
-    window.location.reload()
+    
+    if (event.enable_welcome) {
+        setShowWelcome(true)
+    }
+    
+    loadEvent(data.user.id)
   }
 
   const handlePollVote = async (pollId, idx) => {
@@ -406,13 +390,34 @@ export default function UserView() {
     setTimeout(() => setShowThanks(false), 3000)
   }
 
+  // --- 2. ERROR SCREEN (IMPROVED) ---
+  if (view === 'error') {
+      return (
+          <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6">
+              <div className="text-center space-y-6 animate-in zoom-in-95 duration-500">
+                  <div className="text-6xl animate-bounce">😢</div>
+                  <h1 className="text-3xl font-bold">Event Not Found</h1>
+                  <p className="text-zinc-500">このイベントは存在しないか、削除されました。</p>
+                  <Link to="/" className="inline-block bg-zinc-800 px-8 py-4 rounded-xl font-bold hover:bg-zinc-700 transition-colors">
+                      トップページへ
+                  </Link>
+              </div>
+          </div>
+      )
+  }
+
   if (view === 'loading') return <ModernLoader />
-  if (view === 'error') return <div className="bg-black h-screen text-white flex items-center justify-center font-bold">イベントが見つかりません</div>
+  
   if (view === 'join') {
     return (
       <div className="bg-black h-screen text-white flex flex-col items-center justify-center p-8">
-        <h1 className="text-4xl font-black mb-2 text-center tracking-tighter">LiveQ</h1>
-        <p className="text-zinc-500 mb-10 text-center font-mono text-sm">{slug}</p>
+        <img src="/logo.png" alt="LiveQ" className="h-16 w-auto object-contain mb-6" />
+        
+        {/* CHANGED: Removed uppercase, kept spacing */}
+        <h1 className="text-3xl font-black mb-8 text-center text-white tracking-tight">
+            {event ? event.name : slug}
+        </h1>
+        
         <form onSubmit={join} className="w-full max-w-sm space-y-4">
           <input name="nick" className="w-full bg-zinc-900 p-5 rounded-2xl text-center text-white font-bold border border-zinc-700 outline-none focus:border-indigo-500" placeholder="Nickname" required maxLength={15} />
           <button className="w-full bg-indigo-600 p-5 rounded-2xl font-bold text-lg active:scale-95 transition-all shadow-lg shadow-indigo-900/20">参加する</button>
@@ -421,7 +426,8 @@ export default function UserView() {
     )
   }
 
-  const showOverlay = activePoll && !votedPolls.has(activePoll.id)
+  const showWelcomeModal = showWelcome && event.enable_welcome;
+  const showPollOverlay = !showWelcomeModal && activePoll && !votedPolls.has(activePoll.id);
   const showResults = activePoll && votedPolls.has(activePoll.id) && event.active_poll_id === activePoll.id
 
   return (
@@ -430,7 +436,7 @@ export default function UserView() {
       <div className="flex-none bg-zinc-900 z-10">
         <div className="p-4 flex justify-between items-center border-b border-zinc-800">
            <h1 className="font-bold truncate max-w-[200px] text-zinc-100">{event.name}</h1>
-           <span className="text-xs bg-zinc-900 text-zinc-500 px-2 py-1 rounded border border-zinc-800">{session?.user?.id.slice(0,4)}</span>
+           <img src="/logo.png" alt="LiveQ" className="h-6 w-auto object-contain" />
         </div>
         {(event.enable_chat || event.enable_questions) && (
           <div className="flex h-12 border-b border-zinc-900">
@@ -449,7 +455,11 @@ export default function UserView() {
         </div>
       </div>
       {isBanned && <div className="absolute inset-0 bg-black/95 text-red-500 font-bold flex flex-col items-center justify-center z-[200] p-8 text-center animate-in fade-in"><h2 className="text-4xl mb-4">🚫 BANNED</h2><p className="text-white">アカウントが停止されました。</p></div>}
-      {showOverlay && !isBanned && <PollOverlay poll={activePoll} onVote={handlePollVote} />}
+      
+      {showWelcomeModal && <WelcomeOverlay message={event.welcome_message} onClose={() => setShowWelcome(false)} />}
+      
+      {showPollOverlay && !isBanned && <PollOverlay poll={activePoll} onVote={handlePollVote} />}
+      
       {showThanks && (<div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-green-600 text-white px-8 py-4 rounded-2xl z-[70] animate-out fade-out duration-1000 shadow-xl font-bold">投票しました！</div>)}
     </div>
   )

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 
 // ==========================================
@@ -24,7 +24,6 @@ const TALK_SHOW_QS = [
 
 const MOCK_POLLS = [
     { id: 1, question: "次回の開催地はどこがいい？", options: [{label:"東京", count:10}, {label:"大阪", count:5}, {label:"オンライン", count:20}] },
-    { id: 2, question: "現在、職業は？", options: [{label:"エンジニア", count:0}, {label:"デザイナー", count:0}, {label:"学生", count:0}] }
 ]
 
 const MOCK_ALERTS = [
@@ -257,6 +256,55 @@ function DummyBannedList() {
     )
 }
 
+// --- NEW: Dummy Settings Panel to match real EventAdmin ---
+function DummySettingsPanel() {
+    const [toggles, setToggles] = useState({ chat: true, questions: true, welcome: false })
+    
+    // Toggle logic for demo effect
+    const toggle = (key) => setToggles(p => ({...p, [key]: !p[key]}))
+  
+    return (
+      <div className="space-y-6 pb-20 h-full overflow-y-auto">
+          {/* Toggles */}
+          <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800 shadow-lg">
+              <h3 className="font-bold mb-4 text-zinc-300">機能のON/OFF (デモ)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Chat */}
+                  <button onClick={()=>toggle('chat')} className={`p-4 rounded-xl border font-bold flex justify-between items-center transition-all ${toggles.chat?'bg-green-900/20 border-green-500/50 text-green-400':'bg-black border-zinc-700 text-zinc-500'}`}>
+                      <span>💬 チャット機能</span><span className={`text-xs px-2 py-1 rounded ${toggles.chat?'bg-green-500 text-black':'bg-zinc-800 text-zinc-500'}`}>{toggles.chat?'ON':'OFF'}</span>
+                  </button>
+                  {/* Questions */}
+                  <button onClick={()=>toggle('questions')} className={`p-4 rounded-xl border font-bold flex justify-between items-center transition-all ${toggles.questions?'bg-green-900/20 border-green-500/50 text-green-400':'bg-black border-zinc-700 text-zinc-500'}`}>
+                      <span>❓ 質問機能</span><span className={`text-xs px-2 py-1 rounded ${toggles.questions?'bg-green-500 text-black':'bg-zinc-800 text-zinc-500'}`}>{toggles.questions?'ON':'OFF'}</span>
+                  </button>
+                  {/* Welcome */}
+                  <button onClick={()=>toggle('welcome')} className={`p-4 rounded-xl border font-bold flex justify-between items-center transition-all ${toggles.welcome?'bg-yellow-900/20 border-yellow-500/50 text-yellow-400':'bg-black border-zinc-700 text-zinc-500'}`}>
+                      <span>👋 ウェルカム画面</span><span className={`text-xs px-2 py-1 rounded ${toggles.welcome?'bg-yellow-500 text-black':'bg-zinc-800 text-zinc-500'}`}>{toggles.welcome?'ON':'OFF'}</span>
+                  </button>
+              </div>
+          </div>
+  
+          {/* Inputs */}
+          <div className="bg-zinc-900 p-6 rounded-xl border border-zinc-800 shadow-lg space-y-6">
+              <h3 className="font-bold text-zinc-300">基本設定 (デモ)</h3>
+              <div>
+                  <label className="block text-zinc-500 text-xs font-bold mb-2 uppercase tracking-wider">ウェルカムメッセージ</label>
+                  <textarea disabled className="w-full bg-black p-4 rounded-xl border border-zinc-700 text-zinc-500 focus:border-blue-500 outline-none transition-colors h-24" placeholder="（デモ環境では編集できません）" />
+              </div>
+              <div>
+                  <label className="block text-zinc-500 text-xs font-bold mb-2 uppercase tracking-wider">管理者パスワード</label>
+                  <input disabled className="w-full bg-black p-4 rounded-xl border border-zinc-700 text-zinc-500 focus:border-blue-500 outline-none transition-colors" value="********" />
+              </div>
+              <div>
+                  <label className="block text-zinc-500 text-xs font-bold mb-2 uppercase tracking-wider">質問リミット</label>
+                  <input disabled className="w-full bg-black p-4 rounded-xl border border-zinc-700 text-zinc-500 focus:border-blue-500 outline-none transition-colors" value="5" />
+              </div>
+              <button onClick={()=>alert('デモ環境のため保存されません')} className="w-full bg-blue-600/50 py-4 rounded-xl font-bold text-white/50 cursor-not-allowed">設定を保存</button>
+          </div>
+      </div>
+    )
+  }
+
 function AdminView() {
     const [tab, setTab] = useState('polls')
 
@@ -266,7 +314,10 @@ function AdminView() {
             <div className="p-4 md:p-6 border-b border-zinc-800 bg-zinc-900/50 shrink-0">
                 <div className="flex justify-between items-center mb-4 md:mb-6">
                     <div>
-                        <h1 className="text-xl md:text-2xl font-bold mb-1">LiveQ <span className="text-blue-500 text-base md:text-lg">/ Admin</span></h1>
+                        <div className="flex items-center gap-2 mb-1">
+                            <img src="/logo.png" alt="LiveQ" className="h-6 w-auto object-contain" />
+                            <span className="text-blue-500 text-base md:text-lg font-bold">/ Admin</span>
+                        </div>
                         <p className="text-zinc-500 text-xs">Demo Event 2025</p>
                     </div>
                     <div className="flex gap-2">
@@ -275,7 +326,7 @@ function AdminView() {
                 </div>
                 {/* Tabs */}
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                     {[{id: 'polls', label: '📊 投票'}, {id: 'chat', label: '💬 チャット'}, {id: 'qs', label: '❓ 質問'}, {id: 'mod', label: '🚨 違反'}, {id: 'banned', label: '🚫 BAN'}].map(t => (
+                     {[{id: 'polls', label: '📊 投票'}, {id: 'chat', label: '💬 チャット'}, {id: 'qs', label: '❓ 質問'}, {id: 'mod', label: '🚨 違反'}, {id: 'banned', label: '🚫 BAN'}, {id: 'settings', label: '⚙️ 設定'}].map(t => (
                         <button key={t.id} onClick={()=>setTab(t.id)} className={`px-3 md:px-4 py-2 rounded-lg font-bold text-xs md:text-sm whitespace-nowrap transition-colors ${tab===t.id?'bg-blue-600 text-white':'bg-black text-zinc-400 border border-zinc-800'}`}>
                             {t.label}
                         </button>
@@ -290,6 +341,7 @@ function AdminView() {
                 {tab === 'qs' && <DummyQuestionManager />}
                 {tab === 'mod' && <DummyModerationPanel />}
                 {tab === 'banned' && <DummyBannedList />}
+                {tab === 'settings' && <DummySettingsPanel />}
             </div>
         </div>
     )

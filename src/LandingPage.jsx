@@ -131,13 +131,17 @@ function FeatureSection({
   const glowColor = colorMap[color] || colorMap.indigo
 
   return (
-    <div className="py-16 md:py-24 relative">
+    <div className="py-16 md:py-24 relative overflow-hidden">
       <div className={`max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center gap-12 md:gap-32 ${isLeft ? '' : 'md:flex-row-reverse'}`}>
-        <div className="flex-1 text-center md:text-left z-10">
-          <h3 className="text-3xl md:text-5xl font-black mb-4 md:mb-6 tracking-tight leading-tight text-white drop-shadow-lg">{title}</h3>
-          <p className="text-lg md:text-xl text-indigo-100/70 leading-relaxed font-medium">{description}</p>
+        <div className="flex-1 text-center md:text-left z-10 min-w-0">
+          <h3 className="text-3xl md:text-5xl font-black mb-4 md:mb-6 tracking-tight leading-tight text-white drop-shadow-lg md:break-keep">
+            {title}
+          </h3>
+          <p className="text-lg md:text-xl text-indigo-100/70 leading-relaxed font-medium">
+            {description}
+          </p>
         </div>
-        <div className="flex-1 flex justify-center relative group">
+        <div className="flex-1 flex justify-center relative group w-full">
           <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[500px] blur-[80px] rounded-full pointer-events-none transition-opacity duration-700 ${glowColor}`}></div>
           <MasterVideo src={src} />
         </div>
@@ -156,39 +160,67 @@ export default function LandingPage() {
       {/* NAVBAR */}
       <nav className="fixed top-0 w-full z-50 bg-[#0A051E]/80 backdrop-blur-md border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="text-xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">LiveQ</div>
-          <div className="flex gap-4">
-             <Link to="/demopage" className="text-sm font-bold text-indigo-200 hover:text-white transition-colors">デモ</Link>
-             <Link to="/admin" className="text-sm font-bold bg-indigo-600 text-white px-5 py-2 rounded-full hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-900/30">ログイン</Link>
+          
+          <Link to="/" className="flex items-center">
+             <img src="/logo.png" alt="LiveQ" className="h-7 w-auto object-contain" />
+          </Link>
+
+          <div className="flex items-center gap-6">
+             {/* LOGIN BUTTON (Sets mode=login) */}
+             <Link to="/admin?mode=login" className="text-sm font-bold text-indigo-200 hover:text-white transition-colors">
+               ログイン
+             </Link>
+
+             {/* CTA BUTTON (Sets mode=signup) */}
+             <Link to="/admin?mode=signup" className="text-sm font-bold bg-indigo-600 text-white px-5 py-2 rounded-full hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-900/30">
+               無料で始める
+             </Link>
           </div>
         </div>
       </nav>
 
       {/* HERO SECTION */}
-      <section className="pt-32 pb-20 px-6 relative">
+      <section className="pt-32 pb-20 px-6 relative overflow-hidden">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-[600px] bg-indigo-600/20 blur-[130px] rounded-full pointer-events-none opacity-60"></div>
         <div className="max-w-4xl mx-auto text-center relative z-10">
           <div className="inline-flex items-center gap-2 border border-indigo-400/30 bg-indigo-400/10 text-indigo-200 px-4 py-1.5 rounded-full text-xs font-bold mb-6 animate-in fade-in slide-in-from-bottom-4 duration-700 cursor-default">
             <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse shadow-[0_0_10px_rgba(129,140,248,0.5)]"></span>
             アプリDL不要・登録不要
           </div>
-          <h1 className="text-5xl md:text-8xl font-black tracking-tighter mb-6 leading-[0.9] animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100 text-white drop-shadow-2xl">
-            そのイベントに、<br/>
+          
+          <h1 className="text-5xl md:text-8xl font-black tracking-tighter mb-6 leading-[0.9] animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100 text-white drop-shadow-2xl md:break-keep">
+            そのイベントに、<br className="hidden md:block" />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 animate-gradient-x">熱狂を実装する。</span>
           </h1>
-          <p className="text-lg md:text-xl text-indigo-200/80 mb-10 max-w-2xl mx-auto leading-relaxed animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
-            QRコードをかざすだけで、会場がひとつに。<br/>
+          
+          <p className="text-lg md:text-xl text-indigo-200/80 mb-10 max-w-2xl mx-auto leading-relaxed animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200 md:break-keep">
+            QRコードをかざすだけで、会場がひとつに。<br className="hidden md:block" />
             質問、投票、リアクション。すべてがリアルタイム。
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-in fade-in slide-in-from-bottom-10 duration-700 delay-300">
-            <Link to="/demopage" className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-full text-lg hover:scale-105 transition-transform shadow-xl shadow-indigo-900/50">
-                デモを試す
+          
+          {/* HERO BUTTONS */}
+          <div className="flex flex-row gap-3 sm:gap-4 justify-center items-center animate-in fade-in slide-in-from-bottom-10 duration-700 delay-300 w-full max-w-md mx-auto sm:max-w-none">
+            {/* Primary (Signup) */}
+            <Link 
+              to="/admin?mode=signup" 
+              className="flex-1 sm:flex-none w-auto px-4 py-3 sm:px-10 sm:py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-full text-base sm:text-lg hover:scale-105 transition-transform shadow-xl shadow-indigo-900/50 flex items-center justify-center gap-2 whitespace-nowrap"
+            >
+              <span>🚀</span> 無料で始める
+            </Link>
+
+            {/* Secondary */}
+            <Link 
+              to="/demopage" 
+              className="flex-1 sm:flex-none w-auto px-4 py-3 sm:px-10 sm:py-4 bg-white/5 border border-white/10 text-white font-bold rounded-full text-base sm:text-lg hover:bg-white/10 transition-colors backdrop-blur-sm flex items-center justify-center whitespace-nowrap"
+            >
+              デモを試す
             </Link>
           </div>
+
         </div>
       </section>
 
-      {/* --- PHONE FEATURES (AUDIENCE) --- */}
+      {/* ... [Features and other sections same as before] ... */}
       <FeatureSection 
         title="0.1秒の熱狂共有。"
         description="ラグのないリアルタイムチャットで、会場のボルテージを可視化。言葉にならない感情もスタンプで直感的に。"
@@ -215,16 +247,16 @@ export default function LandingPage() {
         src="/ban.mp4" color="red" align="left"
       />
 
-      {/* --- ADMIN SECTION (LAPTOP) --- */}
+      {/* --- ADMIN SECTION --- */}
       <section className="py-24 px-6 border-t border-white/5 relative bg-black/20">
          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-5xl h-[600px] bg-indigo-900/10 blur-[120px] rounded-full pointer-events-none opacity-50"></div>
 
          <div className="max-w-7xl mx-auto text-center relative z-10">
-            <h2 className="text-3xl md:text-5xl font-black mb-6 tracking-tight text-white">
+            <h2 className="text-3xl md:text-5xl font-black mb-6 tracking-tight text-white md:break-keep">
                直感的な<span className="text-indigo-400">管理画面</span>
             </h2>
-            <p className="text-lg md:text-xl text-indigo-200/60 mb-12 max-w-2xl mx-auto">
-               マニュアルは不要です。直感的なUIで、イベントの進行をスムーズに。<br/>
+            <p className="text-lg md:text-xl text-indigo-200/60 mb-12 max-w-2xl mx-auto md:break-keep">
+               マニュアルは不要です。直感的なUIで、イベントの進行をスムーズに。<br className="hidden md:block" />
                PCはもちろん、タブレットからも操作可能です。
             </p>
             
@@ -237,25 +269,25 @@ export default function LandingPage() {
          </div>
       </section>
 
-      {/* --- PROJECTOR SECTION (PROJECTOR SCREEN) --- */}
+      {/* --- PROJECTOR SECTION --- */}
       <section className="py-24 px-6 border-t border-white/5 relative bg-[#050505]">
          <div className="max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row items-center gap-12 md:gap-24">
                
-               <div className="flex-1 text-center md:text-left">
+               <div className="flex-1 text-center md:text-left min-w-0">
                   <div className="inline-block bg-green-500/10 text-green-400 px-3 py-1 rounded-full text-xs font-bold mb-4 border border-green-500/20">
                      📺 会場スクリーンモード
                   </div>
-                  <h2 className="text-3xl md:text-5xl font-black mb-6 tracking-tight leading-tight text-white">
-                     会場を<br/>
+                  <h2 className="text-3xl md:text-5xl font-black mb-6 tracking-tight leading-tight text-white md:break-keep">
+                     会場を<br className="hidden md:block"/>
                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-600">ジャックしよう。</span>
                   </h2>
-                  <p className="text-lg text-indigo-200/60 leading-relaxed mb-8">
-                     プロジェクター専用のデザインも標準装備。<br/>
-                     URLを開くだけで、コメントや投票結果が<br/>
+                  <p className="text-lg text-indigo-200/60 leading-relaxed mb-8 md:break-keep">
+                     プロジェクター専用のデザインも標準装備。<br className="hidden md:block"/>
+                     URLを開くだけで、コメントや投票結果が<br className="hidden md:block"/>
                      美しくアニメーション表示されます。
                   </p>
-                  <Link to="/projector/demo-page" target="_blank" className="inline-flex items-center gap-2 text-green-400 font-bold hover:text-green-300 transition-colors">
+                  <Link to="/projector/demo" target="_blank" className="inline-flex items-center gap-2 text-green-400 font-bold hover:text-green-300 transition-colors">
                      実際のスクリーン画面を見る <span className="text-lg">→</span>
                   </Link>
                </div>
@@ -265,7 +297,7 @@ export default function LandingPage() {
                     src="/projector.mp4" 
                     maxWidth="900px"
                     scale={1.35} 
-                    y="-10%"  // CHANGED TO PERCENTAGE
+                    y="-10%"  
                   />
                </div>
 
@@ -278,7 +310,7 @@ export default function LandingPage() {
         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-indigo-900/30 blur-[150px] rounded-full pointer-events-none opacity-60"></div>
         
         <div className="relative z-10 max-w-3xl mx-auto">
-            <h2 className="text-4xl md:text-6xl font-black mb-8 tracking-tighter text-white">
+            <h2 className="text-4xl md:text-6xl font-black mb-8 tracking-tighter text-white md:break-keep">
                 さあ、イベントを始めよう。
             </h2>
             <div className="flex justify-center gap-8 mb-12 text-indigo-200/60 font-mono text-sm">
@@ -286,10 +318,11 @@ export default function LandingPage() {
                 <span>✓ クレカ登録不要</span>
                 <span>✓ 即日利用可能</span>
             </div>
-            <Link to="/admin" className="inline-block px-12 py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-full text-xl hover:scale-105 transition-transform shadow-xl shadow-indigo-900/50">
+            {/* CTA (Signup) */}
+            <Link to="/admin?mode=signup" className="inline-block px-12 py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-full text-xl hover:scale-105 transition-transform shadow-xl shadow-indigo-900/50">
                 無料でイベントを作成
             </Link>
-            <p className="mt-12 text-indigo-400/40 text-xs">© 2025 LiveQ.io</p>
+            <p className="mt-12 text-indigo-400/40 text-xs">© 2025 liveq.netlify.app</p>
         </div>
       </section>
 

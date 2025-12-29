@@ -2,6 +2,23 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import { QRCodeSVG } from 'qrcode.react'
 import { useParams } from 'react-router-dom'
+import BigQrOverlay from './components/BigQrOverlay'
+
+// --- 0. SHARED LOADER COMPONENT ---
+function ModernLoader() {
+  return (
+    <div className="bg-black h-[100dvh] w-full flex flex-col items-center justify-center relative overflow-hidden text-white">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-900/40 blur-[120px] rounded-full pointer-events-none"></div>
+      <div className="relative z-10 flex flex-col items-center space-y-6">
+        <div className="relative"><span className="block w-12 h-12 border-4 border-zinc-800 border-t-indigo-500 rounded-full animate-spin"></span></div>
+        <div className="flex flex-col items-center">
+            <img src="/logo.png" alt="LiveQ" className="h-12 w-auto object-contain mb-2" />
+            <p className="text-zinc-500 text-[10px] font-mono animate-pulse tracking-widest">プロジェクター接続中...</p>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // --- SUB-COMPONENT: LIVE POLL ---
 function LivePollOverlay({ pollId }) {
@@ -61,25 +78,6 @@ function LivePollOverlay({ pollId }) {
   )
 }
 
-// --- SUB-COMPONENT: BIG QR OVERLAY (Dark Mode - Scaled Down) ---
-function BigQrOverlay({ url, onClose }) {
-  return (
-    <div 
-      onClick={onClose}
-      className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center cursor-pointer animate-in zoom-in-95 duration-300 backdrop-blur-md"
-    >
-      <h2 className="text-5xl font-black text-white mb-6 tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">JOIN EVENT</h2>
-      
-      <div className="p-4 bg-white rounded-3xl shadow-2xl">
-        <QRCodeSVG value={url} size={300} />
-      </div>
-
-      <p className="text-3xl font-bold text-blue-400 mt-8 tracking-widest font-mono drop-shadow-lg">{url.replace(/^https?:\/\//, '')}</p>
-      <p className="text-zinc-500 mt-8 text-sm uppercase tracking-widest animate-pulse">Click anywhere to close</p>
-    </div>
-  )
-}
-
 // --- MAIN COMPONENT ---
 export default function Projector() {
   const { slug } = useParams()
@@ -134,7 +132,8 @@ export default function Projector() {
     return () => { if(channel) supabase.removeChannel(channel) }
   }, [slug])
 
-  if (!event) return <div className="bg-black h-screen text-white flex items-center justify-center text-xl font-bold animate-pulse">接続中...</div>
+  // --- REPLACED LOADING TEXT WITH COMPONENT ---
+  if (!event) return <ModernLoader />
 
   const topQs = [...qs].sort((a,b) => (b.likes - b.dislikes) - (a.likes - a.dislikes)).slice(0, 5)
   const newestQs = [...qs].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5)
@@ -156,12 +155,12 @@ export default function Projector() {
           <span className="text-[10px] text-zinc-400 uppercase font-black tracking-widest">{status === 'online' ? 'ONLINE' : 'OFFLINE'}</span>
         </div>
 
-        {/* Join Event Button (Same color as others) */}
+        {/* Join Event Button */}
         <button 
           onClick={() => setShowBigQr(true)}
           className="flex items-center gap-2 px-4 py-2 bg-zinc-900/90 rounded-full border border-zinc-800 hover:bg-zinc-700 transition-colors text-[10px] font-bold text-zinc-300 uppercase tracking-widest cursor-pointer backdrop-blur-sm"
         >
-          📱 Join Event
+          📱 QR CODE
         </button>
 
         {/* Full Screen Button */}
