@@ -121,7 +121,7 @@ export default function OrganizerDashboard() {
       enable_chat: true,
       enable_questions: true,
       enable_welcome: true,
-      question_limit: 9999, // DEFAULT LIMIT SET HERE
+      question_limit: 2, 
       welcome_message: `Welcome to ${newName}!`
     })
 
