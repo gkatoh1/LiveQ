@@ -156,7 +156,6 @@ export default function OrganizerDashboard() {
         outline: none !important; 
         border-color: #6366f1 !important;
     }
-    /* Placeholder trick for date inputs */
     input[type="date"]:invalid::-webkit-datetime-edit {
         color: #71717a; /* zinc-500 */
     }
@@ -298,12 +297,13 @@ export default function OrganizerDashboard() {
                         onChange={e=>setNewDate(e.target.value)}
                         onClick={(e) => e.target.showPicker && e.target.showPicker()}
                         onKeyDown={(e) => e.preventDefault()}
-                        className="w-full bg-black p-4 rounded-xl border border-zinc-700 focus:border-indigo-500 outline-none text-white [color-scheme:dark] transition-colors cursor-pointer caret-transparent" 
+                        // UPDATED: Added min-h-[58px] and appearance-none to match height
+                        className="w-full bg-black p-4 rounded-xl border border-zinc-700 focus:border-indigo-500 outline-none text-white [color-scheme:dark] transition-colors cursor-pointer caret-transparent appearance-none min-h-[58px]" 
                       />
                    </div>
                    <div>
                       <label className="block text-xs font-bold text-zinc-500 mb-2 uppercase">管理者パスワード</label>
-                      <input value={newPass} onChange={e=>setNewPass(e.target.value)} className="w-full bg-black p-4 rounded-xl border border-zinc-700 focus:border-indigo-500 outline-none transition-colors" placeholder="password" />
+                      <input value={newPass} onChange={e=>setNewPass(e.target.value)} className="w-full bg-black p-4 rounded-xl border border-zinc-700 focus:border-indigo-500 outline-none transition-colors" placeholder="パスワード" />
                    </div>
                 </div>
                 <button className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 py-4 rounded-xl font-bold text-lg hover:scale-[1.02] transition-transform shadow-xl shadow-indigo-900/30 text-white active:scale-95">
