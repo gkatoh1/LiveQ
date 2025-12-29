@@ -42,7 +42,6 @@ export default function OrganizerDashboard() {
 
   // --- AUTH CHECK LOGIC ---
   useEffect(() => {
-    // 1. Check active session immediately
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       if (session) {
@@ -52,11 +51,9 @@ export default function OrganizerDashboard() {
       }
     })
 
-    // 2. Listen for changes (Login/Logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       if (session) {
-          // Only fetch if we don't have the event yet or user changed
           fetchMyEvent(session.user.id) 
       } else { 
           setMyEvent(null)
@@ -74,9 +71,7 @@ export default function OrganizerDashboard() {
   }, [location.search])
 
   const fetchMyEvent = async (userId) => {
-    // Don't set loading true if we already have data (prevents flickering on tab switch)
     if (!myEvent) setLoading(true) 
-    
     const { data } = await supabase.from('events').select('*').eq('owner_id', userId).maybeSingle()
     setMyEvent(data)
     setLoading(false)
@@ -126,7 +121,7 @@ export default function OrganizerDashboard() {
       enable_chat: true,
       enable_questions: true,
       enable_welcome: true,
-      question_limit: 9999,
+      question_limit: 9999, // DEFAULT LIMIT SET HERE
       welcome_message: `Welcome to ${newName}!`
     })
 
@@ -242,32 +237,29 @@ export default function OrganizerDashboard() {
         {myEvent && (
           <div className="bg-gradient-to-br from-zinc-900 to-black border border-zinc-800 p-8 rounded-3xl relative overflow-hidden group animate-in zoom-in-95 duration-300">
              
-             {/* REMOVED: Background Logo (div was here) */}
-             
              <div className="relative z-10">
                 <span className="inline-block bg-green-500/20 text-green-400 text-xs font-bold px-3 py-1 rounded-full mb-4 border border-green-500/30">Active Event</span>
                 <h2 className="text-4xl font-black mb-2">{myEvent.name}</h2>
                 <p className="text-zinc-500 font-mono mb-8 text-lg">liveq.netlify.app/{myEvent.slug}</p>
 
-                {/* CHANGED: Grid 2x2 on Mobile, Flex on Desktop */}
                 <div className="grid grid-cols-2 md:flex md:flex-wrap gap-4">
                    
-                   {/* 1. Admin (Top Left) */}
+                   {/* 1. Admin */}
                    <Link to={`/admin/${myEvent.slug}`} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-4 rounded-xl font-bold shadow-lg shadow-indigo-900/20 transition-all text-sm md:text-lg active:scale-95 flex items-center justify-center">
                       管理画面
                    </Link>
                    
-                   {/* 2. User View (Top Right) */}
+                   {/* 2. User View */}
                    <Link to={`/${myEvent.slug}`} target="_blank" className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-4 rounded-xl font-bold border border-zinc-700 transition-all text-sm md:text-lg active:scale-95 flex items-center justify-center">
                       📱 参加者
                    </Link>
                    
-                   {/* 3. Projector (Bottom Left) */}
-                   <Link to={`/projector/${myEvent.slug}`} target="_blank" className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-4 rounded-xl font-bold border border-zinc-700 transition-all text-xs md:text-lg active:scale-95 flex items-center justify-center">
+                   {/* 3. Projector (FIXED WRAPPING) */}
+                   <Link to={`/projector/${myEvent.slug}`} target="_blank" className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-4 rounded-xl font-bold border border-zinc-700 transition-all text-xs md:text-lg active:scale-95 flex items-center justify-center whitespace-nowrap">
                       📽️ プロジェクター
                    </Link>
                    
-                   {/* 4. QR Save (Bottom Right) */}
+                   {/* 4. QR Save */}
                    <button 
                       onClick={() => downloadStyledQr(myEvent.slug, myEvent.name)} 
                       className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-4 rounded-xl font-bold border border-zinc-700 transition-all text-sm md:text-lg active:scale-95 flex items-center justify-center"
@@ -276,7 +268,6 @@ export default function OrganizerDashboard() {
                    </button>
                 </div>
 
-                {/* CHANGED: Center Align Delete Button */}
                 <div className="mt-12 pt-8 border-t border-zinc-800 flex flex-col md:flex-row justify-between items-center md:items-end gap-6">
                    <div className="text-zinc-600 text-xs text-center md:text-left w-full md:w-auto">
                       開催日: {myEvent.event_date}<br/>
