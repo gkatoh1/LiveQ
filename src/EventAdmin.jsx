@@ -122,14 +122,64 @@ function BannedUsersList({ eventId }) {
 }
 
 function PollManager({ eventId, event, refreshEvent }) {
-  const [polls, setPolls] = useState([]); const [q, setQ] = useState(''); const [opts, setOpts] = useState(['','']);
+  const [polls, setPolls] = useState([]); 
+  const [q, setQ] = useState(''); 
+  const [opts, setOpts] = useState(['','']);
+  
+  // Local state for instant UI updates (prevents lag)
+  const [activePollId, setActivePollId] = useState(event.active_poll_id);
+  const [entryPollId, setEntryPollId] = useState(event.entry_poll_id);
+
+  // Sync local state when parent event updates (e.g. initial load)
+  useEffect(() => {
+    setActivePollId(event.active_poll_id);
+    setEntryPollId(event.entry_poll_id);
+  }, [event]);
+
   useEffect(() => { loadPolls() }, []);
+  
   const loadPolls = () => { supabase.from('polls').select('*').eq('event_id', eventId).order('created_at', {ascending: false}).then(({data}) => setPolls(data||[])); }
-  const createPoll = async () => { if(!q || opts.some(o=>!o)) return; await supabase.from('polls').insert({ event_id: eventId, question: q, options: opts.map(l=>({label:l,count:0})) }); setQ(''); setOpts(['','']); loadPolls(); }
-  const deletePoll = async (pid) => { if(!confirm("削除しますか？")) return; await supabase.from('polls').delete().eq('id', pid); if(event.active_poll_id===pid){await supabase.from('events').update({active_poll_id:null}).eq('id',eventId);refreshEvent()} loadPolls(); }
-  const toggleEntry = async (pid) => { await supabase.from('events').update({ entry_poll_id: event.entry_poll_id===pid?null:pid }).eq('id', eventId); refreshEvent(); }
-  const toggleLive = async (pid) => { await supabase.from('events').update({ active_poll_id: event.active_poll_id===pid?null:pid }).eq('id', eventId); refreshEvent(); }
+  
+  const createPoll = async () => { 
+      if(!q || opts.some(o=>!o)) return; 
+      await supabase.from('polls').insert({ event_id: eventId, question: q, options: opts.map(l=>({label:l,count:0})) }); 
+      setQ(''); setOpts(['','']); loadPolls(); 
+  }
+
+  const deletePoll = async (pid) => { 
+      if(!confirm("削除しますか？")) return; 
+      
+      // Safety: If deleting the active poll, unset it first
+      if (activePollId === pid) {
+          await supabase.from('events').update({ active_poll_id: null }).eq('id', eventId);
+          setActivePollId(null);
+      }
+      if (entryPollId === pid) {
+          await supabase.from('events').update({ entry_poll_id: null }).eq('id', eventId);
+          setEntryPollId(null);
+      }
+
+      await supabase.from('polls').delete().eq('id', pid); 
+      refreshEvent(); // Sync parent
+      loadPolls(); 
+  }
+
+  const toggleEntry = async (pid) => { 
+      const newValue = entryPollId === pid ? null : pid;
+      setEntryPollId(newValue); // Instant UI update
+      await supabase.from('events').update({ entry_poll_id: newValue }).eq('id', eventId); 
+      refreshEvent(); 
+  }
+
+  const toggleLive = async (pid) => { 
+      const newValue = activePollId === pid ? null : pid;
+      setActivePollId(newValue); // Instant UI update
+      await supabase.from('events').update({ active_poll_id: newValue }).eq('id', eventId); 
+      refreshEvent(); 
+  }
+
   const handleOpt = (i, v) => { const n=[...opts]; n[i]=v; setOpts(n) }
+
   return (
     <div className="pb-20">
       <h2 className="text-xl md:text-2xl font-bold mb-4">📊 投票管理</h2>
@@ -139,7 +189,31 @@ function PollManager({ eventId, event, refreshEvent }) {
         {opts.map((o,i)=>(<div key={i} className="flex gap-2 mb-2"><input value={o} onChange={e=>handleOpt(i,e.target.value)} placeholder={`選択肢 ${i+1}`} className="flex-1 bg-black p-3 rounded-lg border border-zinc-700 text-white"/>{opts.length>2 && <button onClick={()=>setOpts(opts.filter((_,x)=>x!==i))} className="text-zinc-500 px-3 text-xl">×</button>}</div>))}
         <div className="flex gap-3 mt-4"><button onClick={()=>setOpts([...opts,''])} className="flex-1 bg-zinc-800 text-zinc-300 font-bold py-3 rounded-lg border border-zinc-700">+ 選択肢</button><button onClick={createPoll} className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg active:scale-95 transition-transform">作成する</button></div>
       </div>
-      <div className="space-y-4">{polls.map(p=>(<div key={p.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex flex-col gap-4"><div><p className="font-bold text-lg">{p.question}</p><p className="text-xs text-zinc-500 mt-1">{p.options && p.options.map(o => o.label).join(' / ')}</p></div><div className="flex gap-2 w-full"><button onClick={()=>toggleEntry(p.id)} className={`flex-1 py-2 rounded-lg text-sm font-bold border ${event.entry_poll_id===p.id?'bg-yellow-500 border-yellow-500 text-black shadow-[0_0_10px_rgba(234,179,8,0.4)]':'bg-black border-zinc-700 text-zinc-400'}`}>{event.entry_poll_id===p.id ? '★ 参加時ON' : '参加時'}</button><button onClick={()=>toggleLive(p.id)} className={`flex-1 py-2 rounded-lg text-sm font-bold border ${event.active_poll_id===p.id?'bg-red-600 border-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.6)] animate-pulse':'bg-black border-zinc-700 text-zinc-400'}`}>{event.active_poll_id===p.id ? '● LIVE中' : 'LIVE'}</button><button onClick={()=>deletePoll(p.id)} className="w-10 flex items-center justify-center rounded-lg bg-zinc-800 text-red-500 border border-zinc-700">🗑️</button></div></div>))}</div>
+      <div className="space-y-4">
+        {polls.map(p => (
+            <div key={p.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex flex-col gap-4">
+                <div>
+                    <p className="font-bold text-lg">{p.question}</p>
+                    <p className="text-xs text-zinc-500 mt-1">{p.options && p.options.map(o => o.label).join(' / ')}</p>
+                </div>
+                <div className="flex gap-2 w-full">
+                    <button 
+                        onClick={()=>toggleEntry(p.id)} 
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-colors ${entryPollId === p.id ? 'bg-yellow-500 border-yellow-500 text-black shadow-[0_0_10px_rgba(234,179,8,0.4)]' : 'bg-black border-zinc-700 text-zinc-400'}`}
+                    >
+                        {entryPollId === p.id ? '★ 参加時ON' : '参加時'}
+                    </button>
+                    <button 
+                        onClick={()=>toggleLive(p.id)} 
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-colors ${activePollId === p.id ? 'bg-red-600 border-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.6)] animate-pulse' : 'bg-black border-zinc-700 text-zinc-400'}`}
+                    >
+                        {activePollId === p.id ? '● LIVE中' : 'LIVE'}
+                    </button>
+                    <button onClick={()=>deletePoll(p.id)} className="w-10 flex items-center justify-center rounded-lg bg-zinc-800 text-red-500 border border-zinc-700 hover:bg-zinc-700">🗑️</button>
+                </div>
+            </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -149,28 +223,53 @@ export default function EventAdmin() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const [event, setEvent] = useState(null)
-  const [notFound, setNotFound] = useState(false) // NEW STATE
+  const [notFound, setNotFound] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [passwordInput, setPasswordInput] = useState('')
   const [tab, setTab] = useState('polls')
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => { if(!slug) return; fetchEvent() }, [slug])
+  useEffect(() => {
+    let mounted = true;
 
-  const fetchEvent = async () => {
-    // UPDATED: Destructure error, check for data existence
-    const { data, error } = await supabase.from('events').select('*').eq('slug', slug).single()
-    
-    if (error || !data) {
-        setNotFound(true)
-        return
+    const init = async () => {
+        try {
+            // 1. Wait for session check first
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            // 2. Fetch the event
+            const { data, error } = await supabase.from('events').select('*').eq('slug', slug).maybeSingle()
+            
+            if (!mounted) return;
+
+            if (error || !data) {
+                setNotFound(true);
+                setLoading(false);
+                return;
+            }
+
+            setEvent(data);
+
+            // 3. Auto-login if password matches in storage
+            const savedPass = sessionStorage.getItem(`admin_pass_${slug}`);
+            if (savedPass && savedPass === data.password) {
+                setIsAuthenticated(true);
+            }
+            
+            setLoading(false);
+
+        } catch (e) {
+            console.error(e);
+            if(mounted) {
+                setNotFound(true);
+                setLoading(false);
+            }
+        }
     }
 
-    if(data) {
-        setEvent(data)
-        const savedPass = sessionStorage.getItem(`admin_pass_${slug}`)
-        if (savedPass && savedPass === data.password) { setIsAuthenticated(true) }
-    }
-  }
+    init();
+    return () => { mounted = false; }
+  }, [slug])
 
   const handleLogin = (e) => { e.preventDefault(); if (event && passwordInput === event.password) { setIsAuthenticated(true); sessionStorage.setItem(`admin_pass_${slug}`, passwordInput) } else { alert("パスワードが違います") } }
   const handleLogout = () => { setIsAuthenticated(false); sessionStorage.removeItem(`admin_pass_${slug}`) }
@@ -210,15 +309,14 @@ export default function EventAdmin() {
       alert("リセット完了");
   }
 
-  // --- ERROR SCREEN IF EVENT DELETED ---
   if (notFound) {
       return (
-          <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4">
-              <div className="text-center space-y-6">
+          <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6">
+              <div className="text-center space-y-6 animate-in zoom-in-95 duration-500">
                   <div className="text-6xl animate-bounce">😢</div>
-                  <h1 className="text-3xl font-bold">イベントが見つかりません</h1>
-                  <p className="text-zinc-500">このイベントは削除されたか、存在しません。</p>
-                  <Link to="/admin" className="inline-block bg-indigo-600 px-8 py-4 rounded-xl font-bold hover:bg-indigo-500 transition-colors shadow-lg">
+                  <h1 className="text-3xl font-bold">Event Not Found</h1>
+                  <p className="text-zinc-500">このイベントは存在しないか、削除されました。</p>
+                  <Link to="/admin" className="inline-block bg-zinc-800 px-8 py-4 rounded-xl font-bold hover:bg-zinc-700 transition-colors">
                       ダッシュボードに戻る
                   </Link>
               </div>
@@ -226,8 +324,7 @@ export default function EventAdmin() {
       )
   }
 
-  // --- LOADING ---
-  if (!event) return <ModernLoader />
+  if (loading || !event) return <ModernLoader />
 
   if (!isAuthenticated) {
       return (
@@ -252,7 +349,9 @@ export default function EventAdmin() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-zinc-800 pb-6">
             <div className="w-full md:w-auto">
                 <div className="flex items-center gap-2 mb-1">
-                    <img src="/logo.png" alt="LiveQ" className="h-6 w-auto object-contain" />
+                    <Link to="/admin">
+                        <img src="/logo.png" alt="LiveQ" className="h-6 w-auto object-contain" />
+                    </Link>
                     <span className="text-blue-500 text-base md:text-lg font-bold">/ Admin</span>
                 </div>
                 <p className="text-zinc-500 text-xs">{event.name}</p>
@@ -270,9 +369,17 @@ export default function EventAdmin() {
             </div>
         </div>
 
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
+        {/* --- GRID LAYOUT FOR TABS --- */}
+        <div className="grid grid-cols-3 md:flex gap-2 mb-6 -mx-2 px-2 md:mx-0 md:px-0">
             {[{id: 'polls', label: '📊 投票'}, {id: 'chat', label: '💬 チャット'}, {id: 'qs', label: '❓ 質問'}, {id: 'mod', label: '🚨 違反'}, {id: 'banned', label: '🚫 BAN'}, {id: 'settings', label: '⚙️ 設定'}].map(t => (
-                <button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2.5 rounded-lg font-bold text-sm whitespace-nowrap transition-colors ${tab===t.id?'bg-blue-600 text-white':'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}>
+                <button 
+                    key={t.id} 
+                    onClick={()=>setTab(t.id)} 
+                    className={`
+                        px-2 py-3 md:px-4 md:py-2.5 rounded-lg font-bold text-xs md:text-sm transition-colors flex items-center justify-center whitespace-nowrap
+                        ${tab===t.id ? 'bg-blue-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}
+                    `}
+                >
                     {t.label}
                 </button>
             ))}

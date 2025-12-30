@@ -209,7 +209,7 @@ function PollOverlay({ poll, onVote }) {
   if (!poll) return null
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-8 animate-in fade-in backdrop-blur-sm">
-      {poll.type === 'entry' && <span className="text-yellow-500 font-bold mb-2 uppercase tracking-widest text-xs">Welcome Poll</span>}
+      {poll.type === 'entry' && <span className="text-yellow-500 font-bold mb-2 uppercase tracking-widest text-xs">入場アンケート</span>}
       {poll.type === 'live' && <span className="text-red-500 font-bold mb-2 uppercase tracking-widest text-xs animate-pulse">Live Poll</span>}
       <h2 className="text-2xl font-bold text-white mb-10 text-center leading-snug">{poll.question}</h2>
       <div className="w-full max-w-sm space-y-4">
@@ -273,88 +273,109 @@ export default function UserView() {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
   }, [isMock])
 
-  // --- 1. INITIAL CHECK (FIXED) ---
+  // --- 1. INITIAL CHECK (ROBUST) ---
   useEffect(() => {
     if (isMock) return;
+    
+    let mounted = true;
+
     const init = async () => {
-        // STEP 1: Verify event exists BEFORE checking auth
-        const { data: ev, error } = await supabase.from('events').select('*').eq('slug', slug).maybeSingle()
-        
-        if (error || !ev) {
-            setView('error') // Event doesn't exist
-            return
-        }
+        try {
+            const { data: ev, error } = await supabase.from('events').select('*').eq('slug', slug).maybeSingle()
+            
+            if (error || !ev) {
+                if (mounted) setView('error') 
+                return
+            }
 
-        setEvent(ev)
+            if (mounted) setEvent(ev)
 
-        // STEP 2: Only proceed if event exists
-        const { data: auth } = await supabase.auth.getSession()
-        setSession(auth.session)
-        
-        if (!auth.session) {
-            setView('join')
-        } else {
-            loadEvent(auth.session.user.id)
+            const { data: auth } = await supabase.auth.getSession()
+            const currentSession = auth.session;
+
+            if (mounted) setSession(currentSession)
+            
+            if (!currentSession) {
+                if (mounted) setView('join')
+            } else {
+                const { data: profile } = await supabase.from('profiles').select('*').eq('id', currentSession.user.id).eq('event_id', ev.id).maybeSingle()
+                
+                if (profile) {
+                    if (mounted) loadEventData(ev, currentSession.user.id)
+                } else {
+                    if (mounted) setView('join')
+                }
+            }
+        } catch (e) {
+            console.error("Init Error:", e)
+            if (mounted) setView('error')
         }
     }
     init()
+    
+    return () => { mounted = false }
   }, [slug, isMock])
 
-  // --- LOAD DATA ---
-  async function loadEvent(userId) {
+  // --- UPDATED: Helper to load event data channels ---
+  const loadEventData = async (eventObj, userId) => {
     await supabase.removeAllChannels()
-    // We already know event exists from init, but good to keep fetching fresh data
-    const { data } = await supabase.from('events').select('*').eq('slug', slug).single()
-    if (!data) return setView('error') // Safety fallback
     
-    resetCountRef.current = data.reset_count
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single()
-    if (!profile) { await supabase.auth.signOut(); setView('join'); return }
-    if (profile.is_banned) setIsBanned(true)
+    resetCountRef.current = eventObj.reset_count
+    
+    const { data: profile } = await supabase.from('profiles').select('is_banned').eq('id', userId).eq('event_id', eventObj.id).single()
+    if (profile?.is_banned) setIsBanned(true)
 
-    setEvent(data)
-    
+    // Setup Realtime
     const channelName = `event_main_${Date.now()}`
-    const eventChannel = supabase.channel(channelName)
-      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'events', filter:`id=eq.${data.id}`}, 
+    supabase.channel(channelName)
+      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'events', filter:`id=eq.${eventObj.id}`}, 
         (payload) => {
           const newEvent = payload.new
           setEvent(newEvent)
           if (newEvent.reset_count > resetCountRef.current) { handleKick(); return }
-          if (newEvent.active_poll_id) { fetchPoll(newEvent.active_poll_id) } 
-          else { 
-             const currentPoll = activePollRef.current;
-             if (currentPoll && currentPoll.id !== newEvent.entry_poll_id) setActivePoll(null)
+          
+          // UPDATED LOGIC: Prioritize Live, then Entry
+          if (newEvent.active_poll_id) { 
+              fetchPoll(newEvent.active_poll_id, 'live') 
+          } else if (newEvent.entry_poll_id) { 
+              fetchPoll(newEvent.entry_poll_id, 'entry') 
+          } else {
+              setActivePoll(null)
           }
         }
-      )
-      .subscribe((status) => { if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') window.location.reload() })
+      ).subscribe()
 
-    const profileChannel = supabase.channel(`profile_${Date.now()}`)
+    supabase.channel(`profile_${Date.now()}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, 
         (payload) => { if (payload.new.id === userId) setIsBanned(payload.new.is_banned) }
       ).subscribe()
 
-    if (data.enable_chat) setTab('chat')
-    else if (data.enable_questions) setTab('questions')
+    // Init View
+    if (eventObj.enable_chat) setTab('chat')
+    else if (eventObj.enable_questions) setTab('questions')
     else setTab('none')
     
     setView('app')
     
-    if (data.active_poll_id) fetchPoll(data.active_poll_id)
-    else if (data.entry_poll_id) fetchPoll(data.entry_poll_id)
-
-    return () => { supabase.removeChannel(eventChannel); supabase.removeChannel(profileChannel) }
+    // UPDATED LOGIC: Prioritize Live, then Entry on initial load
+    if (eventObj.active_poll_id) {
+        fetchPoll(eventObj.active_poll_id, 'live')
+    } else if (eventObj.entry_poll_id) {
+        fetchPoll(eventObj.entry_poll_id, 'entry')
+    }
   }
 
-  const fetchPoll = async (id) => {
+  // --- UPDATED: fetchPoll accepts type ---
+  const fetchPoll = async (id, type) => {
     const { data } = await supabase.from('polls').select('*').eq('id', id).single()
-    if (data) setActivePoll(data)
+    if (data) {
+        setActivePoll({ ...data, type: type }) // Inject type
+    }
   }
 
   const handleKick = async () => { await supabase.auth.signOut(); setSession(null); setView('join'); alert("再ログインしてください") }
 
-  // --- JOIN ---
+  // --- JOIN (PRESERVE SESSION) ---
   const join = async (e) => {
     e.preventDefault(); 
     const nick = e.target.nick.value.trim(); 
@@ -365,17 +386,23 @@ export default function UserView() {
     const { data: existing } = await supabase.from('profiles').select('id').eq('nickname', nick).eq('event_id', event.id).limit(1)
     if (existing && existing.length > 0) { alert("そのニックネームは、このイベントですでに使用されています"); return }
 
-    const { data, error } = await supabase.auth.signInAnonymously()
-    if (error) return alert("接続エラー")
+    let currentSession = session
+    if (!currentSession) {
+        const { data, error } = await supabase.auth.signInAnonymously()
+        if (error) return alert("接続エラー")
+        currentSession = data.session
+    }
     
-    await supabase.from('profiles').upsert({ id: data.user.id, nickname: nick, event_id: event.id })
-    setSession(data.session)
+    const { error: profileError } = await supabase.from('profiles').upsert({ id: currentSession.user.id, nickname: nick, event_id: event.id })
+    if (profileError) return alert("Error creating profile: " + profileError.message)
+
+    setSession(currentSession)
     
     if (event.enable_welcome) {
         setShowWelcome(true)
     }
     
-    loadEvent(data.user.id)
+    loadEventData(event, currentSession.user.id)
   }
 
   const handlePollVote = async (pollId, idx) => {
@@ -390,7 +417,7 @@ export default function UserView() {
     setTimeout(() => setShowThanks(false), 3000)
   }
 
-  // --- 2. ERROR SCREEN (IMPROVED) ---
+  // --- ERROR SCREEN ---
   if (view === 'error') {
       return (
           <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6">
@@ -413,7 +440,6 @@ export default function UserView() {
       <div className="bg-black h-screen text-white flex flex-col items-center justify-center p-8">
         <img src="/logo.png" alt="LiveQ" className="h-16 w-auto object-contain mb-6" />
         
-        {/* CHANGED: Removed uppercase, kept spacing */}
         <h1 className="text-3xl font-black mb-8 text-center text-white tracking-tight">
             {event ? event.name : slug}
         </h1>
@@ -426,9 +452,14 @@ export default function UserView() {
     )
   }
 
+  // --- RENDER LOGIC ---
   const showWelcomeModal = showWelcome && event.enable_welcome;
+  
+  // Logic: Show poll overlay IF welcome is closed AND we have a poll AND user hasn't voted
   const showPollOverlay = !showWelcomeModal && activePoll && !votedPolls.has(activePoll.id);
-  const showResults = activePoll && votedPolls.has(activePoll.id) && event.active_poll_id === activePoll.id
+  
+  // Logic: Show results ONLY for Live polls, AND if user voted or is watching live results
+  const showResults = activePoll && activePoll.type === 'live' && votedPolls.has(activePoll.id) && event.active_poll_id === activePoll.id
 
   return (
     <div className="fixed inset-0 flex flex-col bg-black text-white font-sans overflow-hidden max-w-lg mx-auto border-x border-zinc-900 shadow-2xl">

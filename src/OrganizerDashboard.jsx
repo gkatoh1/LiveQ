@@ -40,28 +40,62 @@ export default function OrganizerDashboard() {
   const [newPass, setNewPass] = useState('')
   const [newDate, setNewDate] = useState('')
 
-  // --- AUTH CHECK LOGIC ---
+  // --- 1. STRICT INITIALIZATION LOGIC ---
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
+    let mounted = true;
+
+    const initDashboard = async () => {
+      try {
+        // A. Get Session First
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        
+        if (mounted) {
+          setSession(currentSession);
+
+          if (currentSession) {
+            // B. If logged in, MUST fetch event BEFORE setting loading=false
+            const { data } = await supabase
+              .from('events')
+              .select('*')
+              .eq('owner_id', currentSession.user.id)
+              .maybeSingle();
+            
+            if (mounted && data) {
+              setMyEvent(data);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Dashboard Load Error:", error);
+      } finally {
+        // C. Only turn off loading after both steps are done
+        if (mounted) setLoading(false);
+      }
+    };
+
+    initDashboard();
+
+    // D. Listen for auth changes (Login/Logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mounted) return;
+      
+      setSession(session);
+      
       if (session) {
-          fetchMyEvent(session.user.id)
+        setLoading(true); // Re-trigger loading on login
+        const { data } = await supabase.from('events').select('*').eq('owner_id', session.user.id).maybeSingle();
+        if(mounted) setMyEvent(data);
+        if(mounted) setLoading(false);
       } else {
-          setLoading(false)
+        if(mounted) setMyEvent(null);
+        if(mounted) setLoading(false);
       }
-    })
+    });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      if (session) {
-          fetchMyEvent(session.user.id) 
-      } else { 
-          setMyEvent(null)
-          setLoading(false) 
-      }
-    })
-
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    }
   }, [])
 
   useEffect(() => {
@@ -70,11 +104,12 @@ export default function OrganizerDashboard() {
     if (params.get('mode') === 'login') setIsSignUp(false)
   }, [location.search])
 
-  const fetchMyEvent = async (userId) => {
-    if (!myEvent) setLoading(true) 
-    const { data } = await supabase.from('events').select('*').eq('owner_id', userId).maybeSingle()
-    setMyEvent(data)
-    setLoading(false)
+  // Simple helper to refresh event data after creation/deletion
+  const refreshEventData = async (userId) => {
+    setLoading(true);
+    const { data } = await supabase.from('events').select('*').eq('owner_id', userId).maybeSingle();
+    setMyEvent(data);
+    setLoading(false);
   }
 
   const translateError = (msg) => {
@@ -112,23 +147,25 @@ export default function OrganizerDashboard() {
     if (!newName || !newSlug || !newPass || !newDate) return alert("全ての項目を入力してください")
     if (!/^[a-zA-Z0-9-_]+$/.test(newSlug)) return alert("URLスラッグは英数字とハイフンのみ使用できます")
 
+    const finalSlug = newSlug.toLowerCase();
+
     const { error } = await supabase.from('events').insert({
       owner_id: session.user.id,
       name: newName,
-      slug: newSlug,
+      slug: finalSlug,
       password: newPass,
       event_date: newDate,
       enable_chat: true,
       enable_questions: true,
       enable_welcome: true,
-      question_limit: 2, 
+      question_limit: 9999, 
       welcome_message: `Welcome to ${newName}!`
     })
 
     if (error) {
       alert("作成エラー: " + translateError(error.message))
     } else {
-      fetchMyEvent(session.user.id)
+      refreshEventData(session.user.id)
     }
   }
 
@@ -228,8 +265,11 @@ export default function OrganizerDashboard() {
 
         <div className="flex justify-between items-center mb-12 border-b border-zinc-800 pb-6">
           <div className="flex items-center gap-4">
-             <img src="/logo.png" alt="LiveQ" className="h-8 w-auto opacity-80" />
-             <h1 className="text-2xl font-bold hidden md:block">Organizer Dashboard</h1>
+             {/* LINK TO HOME */}
+             <Link to="/">
+                <img src="/logo.png" alt="LiveQ" className="h-8 w-auto opacity-80 cursor-pointer" />
+             </Link>
+             <h1 className="text-2xl font-bold hidden md:block">ダッシュボード</h1>
           </div>
           <button onClick={handleLogout} className="text-zinc-500 hover:text-white text-sm bg-zinc-900 px-4 py-2 rounded-lg border border-zinc-800">ログアウト</button>
         </div>
@@ -254,7 +294,7 @@ export default function OrganizerDashboard() {
                       📱 参加者
                    </Link>
                    
-                   {/* 3. Projector (FIXED WRAPPING) */}
+                   {/* 3. Projector */}
                    <Link to={`/projector/${myEvent.slug}`} target="_blank" className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-4 rounded-xl font-bold border border-zinc-700 transition-all text-xs md:text-lg active:scale-95 flex items-center justify-center whitespace-nowrap">
                       📽️ プロジェクター
                    </Link>
@@ -293,7 +333,7 @@ export default function OrganizerDashboard() {
                    <label className="block text-xs font-bold text-zinc-500 mb-2 uppercase">URLスラッグ (英数字)</label>
                    <div className="flex items-center bg-black rounded-xl border border-zinc-700 overflow-hidden focus-within:border-indigo-500 transition-colors">
                       <span className="pl-4 text-zinc-500 text-sm">liveq.netlify.app/</span>
-                      <input value={newSlug} onChange={e=>setNewSlug(e.target.value)} className="flex-1 bg-transparent p-4 outline-none" placeholder="meeting-01" />
+                      <input value={newSlug} onChange={e=>setNewSlug(e.target.value.toLowerCase())} className="flex-1 bg-transparent p-4 outline-none" placeholder="meeting-01" />
                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
