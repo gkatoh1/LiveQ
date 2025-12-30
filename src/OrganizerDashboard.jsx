@@ -158,8 +158,8 @@ export default function OrganizerDashboard() {
       enable_chat: true,
       enable_questions: true,
       enable_welcome: true,
-      question_limit: 9999, 
-      welcome_message: `Welcome to ${newName}!`
+      question_limit: 2, 
+      welcome_message: `${newName} へようこそ!`
     })
 
     if (error) {
